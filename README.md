@@ -14,11 +14,11 @@ Browser ──► Cloudflare Worker ──► LangSearch API
 
 Rust (crates/search-core) ──wasm-pack──► public/engine ──► runs in the browser:
 URL deduplication, per-host capping, blended ranking, term highlighting,
-relative-date labels. A TypeScript twin provides a seamless fallback.
+relative-date labels.
 ```
 
 - `src/App.tsx` — the interface (light/dark monochrome, keyboard: `/` focus, `Esc` clear)
-- `src/engine.ts` — WASM loader + identical TS fallback
+- `src/engine.ts` — loads the WebAssembly engine
 - `src/worker.ts` — Worker: `/api/search` → LangSearch, canonical cache keys
 - `crates/search-core` — the Rust engine compiled to WASM
 
@@ -26,7 +26,7 @@ relative-date labels. A TypeScript twin provides a seamless fallback.
 
 ```sh
 npm install
-npm run wasm     # optional; needs wasm-pack + Rust — the app falls back to TS
+npm run wasm     # requires wasm-pack and Rust; results are processed only by this build
 npm run dev      # vite dev server (frontend only)
 
 # full local worker preview (needs dist + a LangSearch key)

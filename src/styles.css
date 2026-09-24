@@ -7,7 +7,6 @@
   --fg3: #86868b;
   --line: rgba(0, 0, 0, 0.1);
   --chip: #f5f5f7;
-  --chip-hover: #e8e8ed;
   --mark-bg: rgba(0, 0, 0, 0.08);
   --nav-bg: rgba(255, 255, 255, 0.72);
   --shadow: rgba(0, 0, 0, 0.08);
@@ -23,7 +22,6 @@
   --fg3: #86868b;
   --line: rgba(255, 255, 255, 0.16);
   --chip: #1d1d1f;
-  --chip-hover: #2d2d2f;
   --mark-bg: rgba(255, 255, 255, 0.18);
   --nav-bg: rgba(0, 0, 0, 0.72);
   --shadow: rgba(0, 0, 0, 0.4);
@@ -80,11 +78,15 @@ button {
   position: sticky;
   top: 0;
   z-index: 10;
-  height: 52px;
+  height: calc(52px + env(safe-area-inset-top, 0px));
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding:
+    env(safe-area-inset-top, 0px)
+    max(24px, env(safe-area-inset-right, 0px))
+    0
+    max(24px, env(safe-area-inset-left, 0px));
   background: var(--nav-bg);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
@@ -131,7 +133,11 @@ button {
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  padding: 0 24px 64px;
+  padding:
+    0
+    max(24px, env(safe-area-inset-right, 0px))
+    calc(64px + env(safe-area-inset-bottom, 0px))
+    max(24px, env(safe-area-inset-left, 0px));
   display: flex;
   flex-direction: column;
 }
@@ -168,15 +174,6 @@ button {
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.04;
-}
-
-.sub {
-  margin: 18px auto 0;
-  max-width: 520px;
-  font-size: 17px;
-  line-height: 1.5;
-  color: var(--fg2);
-  letter-spacing: -0.01em;
 }
 
 /* ————— Search box ————— */
@@ -257,35 +254,6 @@ button {
 .clear svg {
   width: 16px;
   height: 16px;
-}
-
-/* ————— Suggestions ————— */
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 28px;
-}
-
-.chip {
-  font-size: 13px;
-  color: var(--fg2);
-  background: var(--chip);
-  border-radius: 999px;
-  padding: 7px 15px;
-  letter-spacing: -0.01em;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
-}
-
-.chip:hover {
-  background: var(--chip-hover);
-  color: var(--fg);
-}
-
-.chip:active {
-  transform: scale(0.97);
 }
 
 /* ————— Results meta ————— */
@@ -447,21 +415,11 @@ mark {
 /* ————— Notice / error ————— */
 
 .notice {
-  margin-top: 48px;
+  margin: 48px 0 0;
   text-align: center;
-}
-
-.notice-title {
-  margin: 0;
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.02em;
-}
-
-.notice-body {
-  margin: 8px 0 0;
-  font-size: 14px;
-  color: var(--fg2);
 }
 
 /* ————— Skeleton ————— */
@@ -506,37 +464,27 @@ mark {
   }
 }
 
-/* ————— Footer ————— */
-
-.foot {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 20px 24px;
-  border-top: 1px solid var(--line);
-  font-size: 12px;
-  color: var(--fg3);
-  letter-spacing: -0.01em;
-}
-
 /* ————— Small screens ————— */
 
 @media (max-width: 560px) {
   .nav {
-    padding: 0 16px;
+    padding:
+      env(safe-area-inset-top, 0px)
+      max(16px, env(safe-area-inset-right, 0px))
+      0
+      max(16px, env(safe-area-inset-left, 0px));
   }
 
   .main {
-    padding: 0 18px 48px;
+    padding:
+      0
+      max(18px, env(safe-area-inset-right, 0px))
+      calc(48px + env(safe-area-inset-bottom, 0px))
+      max(18px, env(safe-area-inset-left, 0px));
   }
 
   .r-display {
     max-width: 200px;
-  }
-
-  .foot-right {
-    display: none;
   }
 }
 

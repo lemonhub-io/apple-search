@@ -6,10 +6,7 @@ type Theme = "light" | "dark";
 
 interface Meta {
   count: number;
-  tookMs: number;
-  procMs: number;
-  engine: "wasm" | "js";
-  cached: boolean;
+  ms: number;
   query: string;
 }
 
@@ -21,10 +18,13 @@ const FRESHNESS = [
   { id: "oneYear", label: "Past year" },
 ] as const;
 
-const SUGGESTIONS = ["Cloudflare Workers", "WebAssembly", "LangSearch API", "Apple Human Interface"];
-
 function systemTheme(): Theme {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function queryFromLocation(): string | null {
+  const params = new URLSearchParams(location.search);
+  return params.get("q") || params.get("url");
 }
 
 export default function App() {
@@ -42,6 +42,15 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    const color = theme === "dark" ? "#000000" : "#ffffff";
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][data-active]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.dataset.active = "";
+      document.head.appendChild(meta);
+    }
+    meta.content = color;
   }, [theme]);
 
   const runSearch = useCallback(
@@ -60,29 +69,31 @@ export default function App() {
       }
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&freshness=${fresh}&count=10`);
-        const data = (await res.json()) as {
+        let data: {
           error?: string;
           query?: string;
           results?: Parameters<typeof processResults>[1];
           took_ms?: number;
         };
-        if (!res.ok) throw new Error(data.error ?? `Request failed (HTTP ${res.status}).`);
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error("Couldn’t complete the search.");
+        }
+        if (!res.ok) throw new Error(data.error || "Couldn’t complete the search.");
         const processed = await processResults(data.query ?? q, data.results ?? []);
         if (my !== seq.current) return;
         setResults(processed.results);
         setMeta({
           count: processed.results.length,
-          tookMs: data.took_ms ?? 0,
-          procMs: processed.ms,
-          engine: processed.engine,
-          cached: res.headers.get("x-cache") === "HIT",
+          ms: (data.took_ms ?? 0) + processed.ms,
           query: data.query ?? q,
         });
         setPhase("done");
       } catch (e) {
         if (my !== seq.current) return;
         setResults([]);
-        setError(e instanceof Error ? e.message : "Something went wrong.");
+        setError(e instanceof Error && e.message ? e.message : "Couldn’t complete the search.");
         setPhase("error");
       }
     },
@@ -91,7 +102,7 @@ export default function App() {
 
   // Deep link on first load.
   useEffect(() => {
-    const q = new URLSearchParams(location.search).get("q");
+    const q = queryFromLocation();
     if (q) void runSearch(q, "noLimit", false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -99,7 +110,7 @@ export default function App() {
   // Back/forward navigation re-runs the query from the URL.
   useEffect(() => {
     const onPop = () => {
-      const pq = new URLSearchParams(location.search).get("q");
+      const pq = queryFromLocation();
       if (pq) void runSearch(pq, freshness, false);
     };
     window.addEventListener("popstate", onPop);
@@ -157,9 +168,6 @@ export default function App() {
         <div className={`hero-wrap${compact ? " collapsed" : ""}`}>
           <div className="hero">
             <h1 className="headline">Search the web.</h1>
-            <p className="sub">
-              LangSearch results, processed by Rust WebAssembly, delivered from the Cloudflare edge.
-            </p>
           </div>
         </div>
 
@@ -193,16 +201,6 @@ export default function App() {
           )}
         </form>
 
-        {phase === "idle" && (
-          <div className="chips">
-            {SUGGESTIONS.map((s) => (
-              <button key={s} className="chip" onClick={() => void runSearch(s, "noLimit")}>
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-
         {phase === "loading" && (
           <ol className="rlist skeleton" aria-label="Loading results">
             {[0, 1, 2, 3, 4].map((i) => (
@@ -217,18 +215,16 @@ export default function App() {
         )}
 
         {phase === "error" && (
-          <div className="notice" role="alert">
-            <p className="notice-title">Couldn’t complete the search.</p>
-            <p className="notice-body">{error}</p>
-          </div>
+          <p className="notice" role="alert">
+            {error}
+          </p>
         )}
 
         {phase === "done" && meta && (
           <section className="results-zone">
             <div className="rmeta">
               <span className="rmeta-left">
-                {meta.count} result{meta.count === 1 ? "" : "s"} · {(meta.tookMs + meta.procMs).toFixed(0)} ms
-                {meta.cached ? " · cached" : ""} · engine {meta.engine === "wasm" ? "Rust/WASM" : "JS"}
+                {meta.count} result{meta.count === 1 ? "" : "s"} · {meta.ms.toFixed(0)} ms
               </span>
               <nav className="fresh" aria-label="Filter by date">
                 {FRESHNESS.map((f) => (
@@ -244,10 +240,7 @@ export default function App() {
             </div>
 
             {results.length === 0 ? (
-              <div className="notice">
-                <p className="notice-title">No results for “{meta.query}”.</p>
-                <p className="notice-body">Try different keywords or a broader time range.</p>
-              </div>
+              <p className="notice">No results for “{meta.query}”.</p>
             ) : (
               <ol className="rlist">
                 {results.map((r, i) => (
@@ -279,10 +272,6 @@ export default function App() {
         )}
       </main>
 
-      <footer className="foot">
-        <span>Rust → WebAssembly · LangSearch API · Cloudflare Workers</span>
-        <span className="foot-right">Monochrome edition</span>
-      </footer>
     </div>
   );
 }
