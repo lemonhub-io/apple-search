@@ -1,0 +1,12 @@
+node_modules
+dist
+.wrangler
+.dev.vars
+.env
+*.local
+
+# Rust / WASM build output
+target
+crates/search-core/pkg
+crates/search-core/Cargo.lock
+public/engine
