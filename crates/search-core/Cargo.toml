@@ -2,6 +2,7 @@
 name = "search-core"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 description = "Search result post-processing engine compiled to WebAssembly"
 
 [lib]

@@ -1,8 +1,28 @@
 # Search
 
-A minimal, monochrome web search engine. React + TypeScript + Vite on the front,
-a Rust → WebAssembly result engine, and a Cloudflare Worker proxying the
-[LangSearch](https://langsearch.com) Web Search API.
+[![Deploy](https://github.com/lemonhub-io/apple-search/actions/workflows/deploy.yml/badge.svg)](https://github.com/lemonhub-io/apple-search/actions/workflows/deploy.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-black.svg)](LICENSE)
+[![Live](https://img.shields.io/badge/live-asearch.world-black.svg)](https://asearch.world)
+
+A minimal, monochrome web search engine. React + TypeScript + Vite on the
+front, a Rust → WebAssembly result engine, and a Cloudflare Worker proxying
+the [LangSearch](https://langsearch.com) Web Search API.
+
+## Features
+
+- **Intent-aware ranking** — queries are classified (navigate / learn /
+  fresh / general) and rescored client-side with BM25, phrase matching,
+  a provider-order prior, and intent-conditioned boosts.
+- **Query rescue** — the Worker widens freshness windows that starve a
+  query and fans out a simplified fallback query when the upstream index
+  returns too few candidates.
+- **Edge-cached** — identical searches share a canonical cache entry at
+  the Cloudflare edge for 5 minutes.
+- **Installable PWA** — service worker precaches the app shell and the
+  WASM engine; offline shell, install prompt, share target, persisted
+  light/dark theme.
+- **Keyboard-first** — `/` focuses the field, `Esc` clears, `?q=` deep
+  links work, browser history is navigable.
 
 ## Architecture
 
@@ -43,6 +63,23 @@ crates/search-core/src/
                         cargo run --example rerank "query" < results.json
 ```
 
+## API
+
+`GET /api/search` — JSON; the SPA consumes it, but it's usable directly.
+
+| Parameter | Default | Notes |
+| --- | --- | --- |
+| `q` | *(required)* | Query string, capped at 300 chars |
+| `count` | `30` | Upstream candidates fetched, `1`–`50` |
+| `freshness` | inferred | `noLimit`, `oneDay`, `oneWeek`, `oneMonth`, `oneYear`; omit to let the worker infer from recency language |
+
+Response: `query`, `freshness` (effective), `freshness_requested`,
+`expanded` (a simplified fallback query contributed results),
+`candidates`, `results[]` (`id`, `name`, `url`, `displayUrl`, `snippet`,
+`summary`, `datePublished`), `usage`, `took_ms`. Errors return
+`{ "error": "…" }` with a matching HTTP status. `x-cache: HIT|MISS`
+marks edge-cache hits.
+
 ## Development
 
 ```sh
@@ -53,12 +90,15 @@ npm run dev      # vite dev server (frontend only)
 # full local worker preview (needs dist + a LangSearch key)
 npm run build && npx wrangler dev
 echo "LANGSEARCH_API_KEY=sk-..." > .dev.vars
+
+# rust engine tests
+cargo test --manifest-path crates/search-core/Cargo.toml
 ```
 
 ## Deployment
 
-GitHub Actions (`.github/workflows/deploy.yml`) builds the WASM engine, bundles
-the frontend, and deploys with `wrangler` on every push to `main`.
+GitHub Actions (`.github/workflows/deploy.yml`) builds the WASM engine,
+bundles the frontend, and deploys with `wrangler` on every push to `main`.
 
 Required repository secrets:
 
@@ -68,6 +108,14 @@ Required repository secrets:
 | `CLOUDFLARE_ACCOUNT_ID` | Target account |
 | `LANGSEARCH_API_KEY` | [LangSearch dashboard](https://langsearch.com/dashboard) → API keys |
 
-The workflow also pushes `LANGSEARCH_API_KEY` into the Worker on each run, so
-rotating the secret is a re-run away. The Worker serves
+The workflow also pushes `LANGSEARCH_API_KEY` into the Worker on each run,
+so rotating the secret is a re-run away. The Worker serves
 `https://asearch.world` (custom domain; `workers.dev` is disabled).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE) © LemonStudio-hub
