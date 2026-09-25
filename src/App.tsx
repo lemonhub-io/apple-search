@@ -11,6 +11,7 @@ interface Meta {
   intent: string;
   freshness: string;
   widened: boolean;
+  expanded: boolean;
   query: string;
 }
 
@@ -112,6 +113,7 @@ export default function App() {
           query?: string;
           freshness?: string;
           freshness_requested?: string;
+          expanded?: boolean;
           candidates?: number;
           results?: Parameters<typeof processResults>[1];
           took_ms?: number;
@@ -135,6 +137,7 @@ export default function App() {
           widened:
             !!data.freshness_requested &&
             data.freshness_requested !== data.freshness,
+          expanded: !!data.expanded,
           query: data.query ?? q,
         });
         setPhase("done");
@@ -332,6 +335,7 @@ export default function App() {
                 {freshness === "auto" && meta.freshness !== "noLimit" &&
                   ` · ${FRESHNESS.find((f) => f.id === meta.freshness)?.label.toLowerCase()}`}
                 {meta.widened && " · widened to any time"}
+                {meta.expanded && " · expanded query"}
               </span>
               <nav className="fresh" aria-label="Filter by date">
                 {FRESHNESS.map((f) => (

@@ -76,11 +76,33 @@ async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<
     }
   }
 
+  // LangSearch's index is thin for some phrasings — when a query starves,
+  // fan out once with a simplified variant and merge unique results.
+  let expanded = false;
+  if (value.length < 8) {
+    const alt = simplifyQuery(query);
+    if (alt) {
+      const extra = await callUpstream(env, alt, count, "noLimit");
+      if (!(extra instanceof Response)) {
+        const have = new Set(value.map((r) => normalizeUrl(r.url)));
+        let added = 0;
+        for (const r of extra.data?.webPages?.value ?? []) {
+          if (have.add(normalizeUrl(r.url))) {
+            value.push(r);
+            added++;
+          }
+        }
+        expanded = added > 0;
+      }
+    }
+  }
+
   const tookMs = Date.now() - started;
   const body = {
     query: payload.data?.queryContext?.originalQuery ?? query,
     freshness: effectiveFreshness,
     freshness_requested: freshness,
+    expanded,
     candidates: value.length,
     results: value.map((r, i) => ({
       id: r.id ?? `r${i}`,
@@ -131,6 +153,33 @@ async function callUpstream(
     return json({ error: message }, { status: upstream.status === 429 ? 429 : 502 });
   }
   return payload;
+}
+
+/// Drop recency/navigational filler and stopwords to produce a broader
+/// fallback query. Returns null when nothing meaningful remains.
+function simplifyQuery(query: string): string | null {
+  const drop = new Set([
+    "latest", "news", "recent", "recently", "today", "tonight", "breaking",
+    "update", "updates", "weekly", "monthly", "announced",
+    "login", "signin", "official", "website", "homepage", "site",
+    "this", "the", "a", "an", "of", "for", "in", "on", "to", "and", "or",
+    "is", "are", "what", "how", "why",
+  ]);
+  const alt = query
+    .split(/\s+/)
+    .filter((w) => !drop.has(w.toLowerCase()))
+    .join(" ")
+    .trim();
+  return alt.length >= 2 && alt.toLowerCase() !== query.toLowerCase() ? alt : null;
+}
+
+function normalizeUrl(u: string | undefined): string {
+  return (u ?? "")
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/[#?].*$/, "")
+    .replace(/\/+$/, "");
 }
 
 /// Map recency language to a LangSearch freshness window.
