@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 import type { UiResult } from "../engine";
 import type { SearchMeta } from "../hooks/useSearch";
 
@@ -18,7 +18,9 @@ interface Props {
   onFreshness: (id: string) => void;
 }
 
-export function Results({ meta, results, freshness, onFreshness }: Props) {
+// Memoized: typing in the search box re-renders App on every keystroke —
+// the results subtree should only re-render when its own props change.
+export const Results = memo(function Results({ meta, results, freshness, onFreshness }: Props) {
   return (
     <section className="results-zone">
       <div className="rmeta">
@@ -49,15 +51,17 @@ export function Results({ meta, results, freshness, onFreshness }: Props) {
       ) : (
         <ol className="rlist">
           {results.map((r, i) => (
-            <ResultItem key={`${r.id}-${i}`} result={r} index={i} />
+            // Key by id, not index: an AI rerank reorders the same items —
+            // keyed-by-id they move without remounting (no animation replay).
+            <ResultItem key={r.id} result={r} index={i} />
           ))}
         </ol>
       )}
     </section>
   );
-}
+});
 
-function ResultItem({ result: r, index }: { result: UiResult; index: number }) {
+const ResultItem = memo(function ResultItem({ result: r, index }: { result: UiResult; index: number }) {
   return (
     <li style={{ "--i": index } as CSSProperties}>
       <div className="r-site">
@@ -81,4 +85,4 @@ function ResultItem({ result: r, index }: { result: UiResult; index: number }) {
       </p>
     </li>
   );
-}
+});

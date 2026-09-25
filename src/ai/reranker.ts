@@ -6,6 +6,10 @@ export type AiStatus = "off" | "loading" | "downloading" | "ready" | "error";
 
 type Listener = (status: AiStatus, progress: { loaded: number; total: number } | null) => void;
 
+// Bounded wait for one score batch — a hung inference must reject rather
+// than leave a promise (and its search) pending forever.
+const SCORE_TIMEOUT_MS = 60_000;
+
 let worker: Worker | null = null;
 let status: AiStatus = "off";
 let seq = 0;
@@ -16,6 +20,11 @@ let progressCb: ((loaded: number, total: number) => void) | null = null;
 function setStatus(s: AiStatus, progress: { loaded: number; total: number } | null = null) {
   status = s;
   for (const l of listeners) l(status, progress);
+}
+
+function rejectAll(err: Error) {
+  for (const p of pending.values()) p.rej(err);
+  pending.clear();
 }
 
 function ensureWorker(): Worker {
@@ -36,11 +45,15 @@ function ensureWorker(): Worker {
           pending.get(m.id)?.rej(new Error(m.message));
           pending.delete(m.id);
         } else {
+          rejectAll(new Error(m.message ?? "Reranker failed"));
           setStatus("error");
         }
       }
     };
-    worker.onerror = () => setStatus("error");
+    worker.onerror = () => {
+      rejectAll(new Error("Reranker worker crashed"));
+      setStatus("error");
+    };
   }
   return worker;
 }
@@ -58,12 +71,16 @@ export const reranker = {
   /// Spawn the worker and start model load/download. Progress callbacks fire
   /// while the ~280 MB model downloads (first enable only; OPFS after that).
   enable(onProgress?: (loaded: number, total: number) => void) {
+    if (status === "loading" || status === "downloading" || status === "ready") {
+      return; // already running — a second click must not flap the session
+    }
     progressCb = onProgress ?? null;
     setStatus("loading");
     ensureWorker().postMessage({ type: "init" });
   },
 
   disable() {
+    rejectAll(new Error("Reranker disabled"));
     worker?.terminate();
     worker = null;
     progressCb = null;
@@ -75,7 +92,20 @@ export const reranker = {
     if (status !== "ready") return Promise.resolve([]);
     const id = ++seq;
     return new Promise((res, rej) => {
-      pending.set(id, { res, rej });
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        rej(new Error("Rerank timed out"));
+      }, SCORE_TIMEOUT_MS);
+      pending.set(id, {
+        res: (s) => {
+          clearTimeout(timer);
+          res(s);
+        },
+        rej: (e) => {
+          clearTimeout(timer);
+          rej(e);
+        },
+      });
       ensureWorker().postMessage({ type: "score", id, query, texts });
     });
   },

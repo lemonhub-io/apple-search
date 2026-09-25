@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Nav } from "./components/Nav";
 import { Onboarding } from "./components/Onboarding";
 import { Results } from "./components/Results";
@@ -9,7 +9,7 @@ import { useOnline } from "./hooks/useOnline";
 import { useReranker } from "./hooks/useReranker";
 import { useSearch } from "./hooks/useSearch";
 import { useTheme } from "./hooks/useTheme";
-import { queryFromLocation } from "./lib/platform";
+import { ONBOARDED_KEY, queryFromLocation } from "./lib/platform";
 
 export default function App() {
   const online = useOnline();
@@ -22,12 +22,20 @@ export default function App() {
   // First visit (no deep link): guided setup — PWA install, then the optional
   // on-device AI model. Every step skippable; ?q= links jump straight in.
   const [onboarded, setOnboarded] = useState(
-    () => localStorage.getItem("onboarded") === "1" || !!queryFromLocation(),
+    () => localStorage.getItem(ONBOARDED_KEY) === "1" || !!queryFromLocation(),
   );
   const finishOnboarding = () => {
-    localStorage.setItem("onboarded", "1");
+    localStorage.setItem(ONBOARDED_KEY, "1");
     setOnboarded(true);
   };
+
+  // Stable callbacks — Results is memoized, so inline arrows would defeat it.
+  const query = meta?.query ?? "";
+  const onFreshness = useCallback(
+    (f: string) => void runSearch(query, f),
+    [query, runSearch],
+  );
+  const onInstall = useCallback(() => void install(), [install]);
 
   // "/" focuses the field, Escape clears it.
   useEffect(() => {
@@ -52,14 +60,14 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggle}
         canInstall={canInstall}
-        onInstall={() => void install()}
+        onInstall={onInstall}
       />
 
       <main className="main">
         {!onboarded && (
           <Onboarding
             canInstall={canInstall}
-            onInstall={() => void install()}
+            onInstall={onInstall}
             reranker={reranker}
             onDone={finishOnboarding}
           />
@@ -86,7 +94,7 @@ export default function App() {
             meta={meta}
             results={results}
             freshness={freshness}
-            onFreshness={(f) => void runSearch(meta.query, f)}
+            onFreshness={onFreshness}
           />
         )}
       </main>

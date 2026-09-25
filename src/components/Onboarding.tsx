@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { MODEL_MB } from "../ai/model";
 import type { RerankerState } from "../hooks/useReranker";
 
 interface Props {
@@ -7,8 +8,6 @@ interface Props {
   reranker: RerankerState;
   onDone: () => void;
 }
-
-const MODEL_MB = 280;
 
 /// First-run setup: install the app, then optionally download the on-device
 /// AI ranking model. Every step is skippable — the engine works without

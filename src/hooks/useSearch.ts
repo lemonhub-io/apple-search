@@ -52,11 +52,17 @@ export function useSearch(online: boolean, rescore?: Rescore): SearchState {
   const inputRef = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
   const pendingRetry = useRef<string | null>(null);
+  const inFlight = useRef<AbortController | null>(null);
 
   const runSearch = useCallback(async (raw: string, fresh: string, push = true) => {
     const q = cleanQuery(raw);
     if (!q) return;
     const my = ++seq.current;
+    // A newer search supersedes — kill the previous request outright
+    // instead of letting it drain bandwidth in the background.
+    inFlight.current?.abort();
+    const ctrl = new AbortController();
+    inFlight.current = ctrl;
     setPhase("loading");
     setError(null);
     setFreshness(fresh);
@@ -74,7 +80,7 @@ export function useSearch(online: boolean, rescore?: Rescore): SearchState {
       return;
     }
     try {
-      const data = await fetchSearch(q, fresh);
+      const data = await fetchSearch(q, fresh, ctrl.signal);
       // The engine re-parses the raw query itself — operators like
       // site: / -term / "phrase" still apply during ranking.
       const processed = await processResults(q, data.results ?? []);
@@ -89,7 +95,9 @@ export function useSearch(online: boolean, rescore?: Rescore): SearchState {
         freshness: data.freshness ?? "noLimit",
         widened: !!data.freshness_requested && data.freshness_requested !== data.freshness,
         expanded: !!data.expanded,
-        query: data.query ?? q,
+        // The raw query — not data.query (the operator-stripped upstream
+        // form): re-running it must preserve site:/-term/"phrase" semantics.
+        query: q,
         ai: false,
       });
       setPhase("done");
@@ -122,12 +130,16 @@ export function useSearch(online: boolean, rescore?: Rescore): SearchState {
     }
   }, []);
 
-  // Deep link on first load.
+  // Deep link on first load — "auto" so the worker can infer freshness
+  // from recency language in the query, same as a typed search.
   useEffect(() => {
     const q = queryFromLocation();
-    if (q) void runSearch(q, "noLimit", false);
+    if (q) void runSearch(q, "auto", false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Kill the in-flight request if the app unmounts.
+  useEffect(() => () => inFlight.current?.abort(), []);
 
   // Back/forward navigation re-runs the query from the URL.
   useEffect(() => {

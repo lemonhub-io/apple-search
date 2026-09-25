@@ -22,9 +22,13 @@ pub fn dedupe_key(url: &str) -> String {
         .to_lowercase()
 }
 
-/// Does `host` match a filter domain (exact or subdomain)?
+/// Does `host` match a filter domain (exact or subdomain)? Allocation-free:
+/// "x.example.com" matches "example.com" via its ".example.com" suffix.
 pub fn host_matches(host: &str, domain: &str) -> bool {
-    host == domain || host.ends_with(&format!(".{domain}"))
+    host == domain
+        || host
+            .strip_suffix(domain)
+            .is_some_and(|rest| rest.ends_with('.'))
 }
 
 /// Breadcrumb-style display form of a URL (scheme stripped, capped).

@@ -8,7 +8,13 @@
   Cross-Origin-Embedder-Policy: credentialless
 
 /ort/*
-  Cache-Control: public, max-age=604800
+  # Versioned path (/ort/<version>/) — immutable by construction.
+  Cache-Control: public, max-age=31536000, immutable
+
+/engine/*
+  # Unversioned filenames rebuilt per deploy — always revalidate so a new
+  # engine ships immediately instead of sitting stale at the edge.
+  Cache-Control: no-cache
 
 /sw.js
   Cache-Control: no-cache

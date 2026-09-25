@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { reranker, type AiStatus } from "../ai/reranker";
+import { AI_RERANK_KEY } from "../lib/platform";
 
-const FLAG = "ai-rerank"; // localStorage: "on" once the user enabled it
+const FLAG = AI_RERANK_KEY; // localStorage: "on" once the user enabled it
 
 export interface RerankerState {
   status: AiStatus;

@@ -91,7 +91,8 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,svg,png,webmanifest,wasm}"],
         globIgnores: ["ort/**"],
         navigateFallback: "index.html",
-        navigateFallbackDenylist: [/^\/api\//],
+        // API, engine wasm, and ort artifacts must never fall back to the SPA.
+        navigateFallbackDenylist: [/^\/api\//, /^\/engine\//, /^\/ort\//],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         runtimeCaching: [
           {

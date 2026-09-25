@@ -45,33 +45,41 @@ pub fn score_all(
     intent: Intent,
     now_ms: f64,
 ) -> Vec<(usize, f64, Doc)> {
-    let df = document_frequency(&docs);
-    let avg_title = avg_len(&docs, |d| d.title_terms.len());
-    let avg_body = avg_len(&docs, |d| d.body_terms.len());
-    let n = docs.len() as f64;
-
-    let mut scored: Vec<(usize, f64, Doc)> = Vec::with_capacity(docs.len());
-    for d in docs {
-        // A stuffed title is an SEO weapon, not a relevance signal —
-        // demote its BM25 weight so separator-spam can't buy the top slot.
-        let title_w = if title_stuffed(&d.title) { 1.0 } else { TITLE_W };
-        let bm = title_w * bm25(&d.title_terms, &parsed.terms, &df, avg_title, n)
-            + BODY_W * bm25(&d.body_terms, &parsed.terms, &df, avg_body, n);
-        let prior = 1.0 / (1.0 + d.idx as f64 * 0.1);
-        let boost = intent_boost(intent, parsed, &d, now_ms);
-        // Cross-encoder logit → [-1,1] centered: positive judgments lift a
-        // result, negative ones actively bury it — the AI reranker is meant
-        // to dominate ordering when enabled, while structure still applies.
-        let rerank = d
-            .rerank
-            .map(|l| (1.0 / (1.0 + (-l).exp()) - 0.5) * 2.0)
-            .unwrap_or(0.0);
-        scored.push((
-            d.idx,
-            bm * (1.0 - PRIOR_W) + prior * PRIOR_W + boost + RERANK_W * rerank,
-            d,
-        ));
+    // Scores are computed by reference (the df map borrows term strings from
+    // the docs), then zipped back with the owned docs — order is preserved
+    // because both sequences walk the same vector.
+    let mut scores: Vec<(usize, f64)> = Vec::with_capacity(docs.len());
+    {
+        let df = document_frequency(&docs);
+        let avg_title = avg_len(&docs, |d| d.title_terms.len());
+        let avg_body = avg_len(&docs, |d| d.body_terms.len());
+        let n = docs.len() as f64;
+        for d in &docs {
+            // A stuffed title is an SEO weapon, not a relevance signal —
+            // demote its BM25 weight so separator-spam can't buy the top slot.
+            let title_w = if title_stuffed(&d.title) { 1.0 } else { TITLE_W };
+            let bm = title_w * bm25(&d.title_terms, &parsed.terms, &df, avg_title, n)
+                + BODY_W * bm25(&d.body_terms, &parsed.terms, &df, avg_body, n);
+            let prior = 1.0 / (1.0 + d.idx as f64 * 0.1);
+            let boost = intent_boost(intent, parsed, d, now_ms);
+            // Cross-encoder logit → [-1,1] centered: positive judgments lift a
+            // result, negative ones actively bury it — the AI reranker is meant
+            // to dominate ordering when enabled, while structure still applies.
+            let rerank = d
+                .rerank
+                .map(|l| (1.0 / (1.0 + (-l).exp()) - 0.5) * 2.0)
+                .unwrap_or(0.0);
+            scores.push((
+                d.idx,
+                bm * (1.0 - PRIOR_W) + prior * PRIOR_W + boost + RERANK_W * rerank,
+            ));
+        }
     }
+    let mut scored: Vec<(usize, f64, Doc)> = scores
+        .into_iter()
+        .zip(docs)
+        .map(|((idx, s), d)| (idx, s, d))
+        .collect();
     scored.sort_by(|a, b| {
         b.1.partial_cmp(&a.1)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -80,14 +88,14 @@ pub fn score_all(
     scored
 }
 
-fn document_frequency(docs: &[Doc]) -> HashMap<String, usize> {
-    let mut df: HashMap<String, usize> = HashMap::new();
+fn document_frequency<'a>(docs: &'a [Doc]) -> HashMap<&'a str, usize> {
+    let mut df: HashMap<&'a str, usize> = HashMap::new();
     for d in docs {
-        let mut uniq: HashSet<&str> = HashSet::new();
+        let mut uniq: HashSet<&'a str> = HashSet::new();
         uniq.extend(d.title_terms.iter().map(String::as_str));
         uniq.extend(d.body_terms.iter().map(String::as_str));
         for t in uniq {
-            *df.entry(t.to_string()).or_insert(0) += 1;
+            *df.entry(t).or_insert(0) += 1;
         }
     }
     df
@@ -103,7 +111,7 @@ fn avg_len(docs: &[Doc], f: impl Fn(&Doc) -> usize) -> f64 {
 fn bm25(
     doc_terms: &[String],
     query_terms: &[String],
-    df: &HashMap<String, usize>,
+    df: &HashMap<&str, usize>,
     avgdl: f64,
     n_docs: f64,
 ) -> f64 {
@@ -166,7 +174,7 @@ fn intent_boost(intent: Intent, parsed: &Parsed, d: &Doc, now_ms: f64) -> f64 {
     // essentially never outrank the live source.
     if MIRROR_HOSTS
         .iter()
-        .any(|m| d.host == *m || d.host.ends_with(&format!(".{m}")))
+        .any(|m| crate::url::host_matches(&d.host, m))
     {
         boost -= 0.55;
     }
@@ -241,8 +249,10 @@ fn intent_boost(intent: Intent, parsed: &Parsed, d: &Doc, now_ms: f64) -> f64 {
         }
         Intent::Fresh => {
             if let Some(days) = d.date_raw.as_deref().and_then(|v| date::age_days(now_ms, v)) {
+                // -1 covers timezone slop; farther-future dates are publisher
+                // metadata lying, not freshness — they get no boost at all.
                 boost += match days {
-                    i64::MIN..=1 => 0.30,
+                    -1..=1 => 0.30,
                     2..=7 => 0.22,
                     8..=30 => 0.12,
                     31..=90 => 0.05,
@@ -323,7 +333,7 @@ fn quality_prior(d: &Doc) -> f64 {
     // Restricted-registration namespaces carry institutional vetting.
     if VETTED_TLDS
         .iter()
-        .any(|t| d.host.ends_with(&format!(".{t}")))
+        .any(|t| crate::url::host_matches(&d.host, t))
     {
         q += 0.10;
     }

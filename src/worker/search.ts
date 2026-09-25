@@ -60,38 +60,45 @@ export async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): P
 
   let value = payload.data?.webPages?.value ?? [];
   let effectiveFreshness = freshness;
+  let expanded = false;
 
-  // A narrow freshness window can starve the query — widen and retry once.
-  if (freshness !== "noLimit" && value.length < WIDEN_BELOW) {
-    const retry = await callUpstream(env, query, { count, freshness: "noLimit", ...domains });
-    if (!(retry instanceof Response)) {
-      const widened = retry.data?.webPages?.value ?? [];
-      if (widened.length > value.length) {
-        payload = retry;
-        value = widened;
+  // Query rescue — a narrow freshness window and LangSearch's thin index are
+  // independent problems, so the widen retry and the simplified fallback fan
+  // out in parallel instead of chaining two upstream waits.
+  const needWiden = freshness !== "noLimit" && value.length < WIDEN_BELOW;
+  const alt = value.length < STARVED_BELOW ? simplifyQuery(query) : null;
+  if (needWiden || alt) {
+    const [widened, extra] = await Promise.all([
+      needWiden
+        ? callUpstream(env, query, { count, freshness: "noLimit", ...domains })
+        : null,
+      alt
+        ? callUpstream(env, alt, { count, freshness: "noLimit", ...domains })
+        : null,
+    ]);
+
+    // A narrow freshness window can starve the query — widen and retry once.
+    if (widened && !(widened instanceof Response)) {
+      const v = widened.data?.webPages?.value ?? [];
+      if (v.length > value.length) {
+        payload = widened;
+        value = v;
         effectiveFreshness = "noLimit";
       }
     }
-  }
 
-  // LangSearch's index is thin for some phrasings — when a query starves,
-  // fan out once with a simplified variant and merge unique results.
-  let expanded = false;
-  if (value.length < STARVED_BELOW) {
-    const alt = simplifyQuery(query);
-    if (alt) {
-      const extra = await callUpstream(env, alt, { count, freshness: "noLimit", ...domains });
-      if (!(extra instanceof Response)) {
-        const have = new Set(value.map((r) => normalizeUrl(r.url)));
-        let added = 0;
-        for (const r of extra.data?.webPages?.value ?? []) {
-          if (have.add(normalizeUrl(r.url))) {
-            value.push(r);
-            added++;
-          }
+    // A starved query fans out once with a simplified variant; merge unique
+    // results into whatever the first pass (or the widen) produced.
+    if (extra && !(extra instanceof Response)) {
+      const have = new Set(value.map((r) => normalizeUrl(r.url)));
+      let added = 0;
+      for (const r of extra.data?.webPages?.value ?? []) {
+        if (have.add(normalizeUrl(r.url))) {
+          value.push(r);
+          added++;
         }
-        expanded = added > 0;
       }
+      expanded = added > 0;
     }
   }
 

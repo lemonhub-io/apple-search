@@ -3,10 +3,6 @@
 // (WASM; SIMD + threads when cross-origin isolation allows) → cross-encoder
 // scoring of (query, document) pairs.
 //
-// Model: jinaai/jina-reranker-v2-base-multilingual — a cross-encoder that
-// judges whether a document is a good result for the query (trained on
-// relevance data), unlike embedding similarity which only measures overlap.
-//
 // Protocol (postMessage):
 //   in : {type:"init"} | {type:"score", id, query, texts}
 //   out: {type:"progress", loaded, total} | {type:"ready", cached}
@@ -14,15 +10,17 @@
 
 import * as ort from "onnxruntime-web";
 import { AutoTokenizer, env } from "@huggingface/transformers";
+import {
+  BATCH,
+  MAX_LEN,
+  MODEL_BYTES,
+  MODEL_HOST,
+  MODEL_URL,
+  OPFS_NAME,
+  REPO,
+} from "./model";
 
-const REPO = "jinaai/jina-reranker-v2-base-multilingual";
-const MODEL_FILE = "onnx/model_quantized.onnx"; // int8, ~280 MB
-// Self-hosted: model artifacts live in R2 behind models.asearch.world — no
-// huggingface.co runtime dependency (supply chain pinned to our bucket).
-const MODEL_HOSTS = ["https://models.asearch.world"];
-const OPFS_NAME = "jina-reranker-v2-q8.onnx";
-const MAX_LEN = 256;
-const BATCH = 8;
+const DOWNLOAD_ATTEMPTS = 2;
 
 // vite `define` — the installed onnxruntime-web version; matches the
 // directory scripts/copy-ort.mjs writes under public/ort/.
@@ -58,7 +56,7 @@ async function init() {
   env.allowLocalModels = false;
   // Tokenizer files are served from our bucket in HF repo layout
   // (trailing slash — env builds `${remoteHost}{model}/resolve/{rev}/...`).
-  env.remoteHost = `${MODEL_HOSTS[0]}/`;
+  env.remoteHost = `${MODEL_HOST}/`;
 
   const bytes = await modelBytes();
   const t0 = performance.now();
@@ -68,24 +66,20 @@ async function init() {
   });
 
   // Tokenizer (~17 MB) — transformers.js caches it in the browser Cache.
-  tokenizer = await loadTokenizer();
+  tokenizer = await AutoTokenizer.from_pretrained(REPO);
   post({ type: "ready", load_ms: Math.round(performance.now() - t0) });
-}
-
-async function loadTokenizer() {
-  return AutoTokenizer.from_pretrained(REPO);
 }
 
 /// Model bytes: OPFS first (persistent, on-device), else download with
 /// progress and persist for next launch.
-async function modelBytes(): Promise<Uint8Array> {
+async function modelBytes(): Promise<Uint8Array<ArrayBuffer>> {
   const cached = await opfsRead();
   if (cached) return cached;
 
   let lastErr: unknown = null;
-  for (const host of MODEL_HOSTS) {
+  for (let attempt = 0; attempt < DOWNLOAD_ATTEMPTS; attempt++) {
     try {
-      const bytes = await download(`${host}/${REPO}/resolve/main/${MODEL_FILE}`);
+      const bytes = await download(MODEL_URL);
       void opfsWrite(bytes).catch(() => {}); // persist async; session can start now
       return bytes;
     } catch (e) {
@@ -95,35 +89,43 @@ async function modelBytes(): Promise<Uint8Array> {
   throw lastErr instanceof Error ? lastErr : new Error("Model download failed");
 }
 
+/// Stream the model into a single preallocated buffer (Content-Length is
+/// always set by the model worker), reporting progress per chunk. A short
+/// or truncated body is an error — never silently accepted.
 async function download(url: string): Promise<Uint8Array<ArrayBuffer>> {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-  const total = Number(res.headers.get("content-length")) || 279_577_152;
+  const total = Number(res.headers.get("content-length")) || MODEL_BYTES;
+  const out = new Uint8Array(total);
   const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
   let loaded = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    chunks.push(value);
+    if (loaded + value.byteLength > out.length) {
+      throw new Error(`Model larger than expected (${total} bytes)`);
+    }
+    out.set(value, loaded);
     loaded += value.byteLength;
     post({ type: "progress", loaded, total });
   }
-  const out = new Uint8Array(loaded);
-  let off = 0;
-  for (const c of chunks) {
-    out.set(c, off);
-    off += c.byteLength;
+  if (loaded !== out.length) {
+    throw new Error(`Truncated model (${loaded}/${out.length} bytes)`);
   }
   return out;
 }
 
-async function opfsRead(): Promise<Uint8Array | null> {
+/// OPFS read — validates the exact expected size so a partial write from a
+/// killed download is deleted and re-fetched instead of crashing ONNX.
+async function opfsRead(): Promise<Uint8Array<ArrayBuffer> | null> {
   try {
     const dir = await navigator.storage.getDirectory();
     const fh = await dir.getFileHandle(OPFS_NAME);
     const file = await fh.getFile();
-    if (file.size < 1_000_000) return null; // partial write from a dead session
+    if (file.size !== MODEL_BYTES) {
+      await dir.removeEntry(OPFS_NAME).catch(() => {});
+      return null;
+    }
     return new Uint8Array(await file.arrayBuffer());
   } catch {
     return null;
@@ -137,6 +139,11 @@ async function opfsWrite(bytes: Uint8Array<ArrayBuffer>) {
     const w = await fh.createWritable();
     await w.write(bytes);
     await w.close();
+    // Verify what actually landed — quota or a killed session can leave a
+    // short file that would masquerade as a good cache entry.
+    if ((await fh.getFile()).size !== bytes.length) {
+      await dir.removeEntry(OPFS_NAME).catch(() => {});
+    }
   } catch {
     // Quota or browser limitation — model simply re-downloads next time.
   }
