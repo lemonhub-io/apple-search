@@ -24,7 +24,7 @@ impl Intent {
 
 const NAVIGATE_MARKERS: &[&str] = &[
     "login", "signin", "sign in", "official", "site", "website", "homepage", "home page",
-    "download", "install", "pricing", "docs", "documentation", "github", "changelog",
+    "download", "install", "pricing", "docs", "documentation", "changelog",
     "console", "dashboard", "portal",
 ];
 const LEARN_MARKERS: &[&str] = &[
@@ -59,6 +59,10 @@ pub fn classify(query: &str) -> Intent {
         Intent::Navigate
     } else if hit(LEARN_MARKERS) {
         Intent::Learn
+    } else if words.len() == 1 && q.chars().count() >= 3 {
+        // A bare single-token query is almost always an entity name —
+        // the seeker wants the thing's home, not commentary about it.
+        Intent::Navigate
     } else {
         Intent::General
     }

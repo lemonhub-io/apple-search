@@ -22,6 +22,11 @@ pub fn dedupe_key(url: &str) -> String {
         .to_lowercase()
 }
 
+/// Does `host` match a filter domain (exact or subdomain)?
+pub fn host_matches(host: &str, domain: &str) -> bool {
+    host == domain || host.ends_with(&format!(".{domain}"))
+}
+
 /// Breadcrumb-style display form of a URL (scheme stripped, capped).
 pub fn display_of(url: &str) -> String {
     let rest = url.split("://").nth(1).unwrap_or(url);

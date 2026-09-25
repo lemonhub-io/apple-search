@@ -16,16 +16,25 @@ const BODY_W: f64 = 1.0;
 const PRIOR_W: f64 = 0.30; // trust in the provider's own ordering
 
 // Hosts that republish other sites' content — snapshots, caches, mirrors.
+// A functional dedup category (republished copies, not editorial judgment).
 const MIRROR_HOSTS: &[&str] = &[
     "web.archive.org", "archive.org", "webcache.googleusercontent.com",
     "realityripple.com", "cachedview.nl", "cc.bingj.com", "translate.google.com",
 ];
 
-// Host prefixes that signal reference/teaching material (learn intent).
+// Host prefixes that signal reference/teaching material (learn intent) —
+// a web-wide naming convention, not a site whitelist.
 const DOC_HOST_PREFIXES: &[&str] = &[
-    "docs.", "developer.", "learn.", "guide.", "guides.", "manual.", "man.", "wiki.",
-    "reference.", "api.", "kb.", "help.",
+    "docs.", "doc.", "developer.", "learn.", "guide.", "guides.", "manual.",
+    "man.", "wiki.", "reference.", "api.", "kb.", "help.",
 ];
+
+// Restricted-registration TLDs: vetting is a property of the namespace
+// itself (you cannot buy a .edu/.gov without accreditation/authority).
+const VETTED_TLDS: &[&str] = &["edu", "gov", "mil"];
+
+// Title separators — a high count in a long title signals keyword stuffing.
+const TITLE_SEPARATORS: [char; 4] = ['|', '·', '—', '»'];
 
 /// Score every doc and return `(provider_idx, score, doc)` sorted by score
 /// descending, ties broken by provider position.
@@ -42,7 +51,10 @@ pub fn score_all(
 
     let mut scored: Vec<(usize, f64, Doc)> = Vec::with_capacity(docs.len());
     for d in docs {
-        let bm = TITLE_W * bm25(&d.title_terms, &parsed.terms, &df, avg_title, n)
+        // A stuffed title is an SEO weapon, not a relevance signal —
+        // demote its BM25 weight so separator-spam can't buy the top slot.
+        let title_w = if title_stuffed(&d.title) { 1.0 } else { TITLE_W };
+        let bm = title_w * bm25(&d.title_terms, &parsed.terms, &df, avg_title, n)
             + BODY_W * bm25(&d.body_terms, &parsed.terms, &df, avg_body, n);
         let prior = 1.0 / (1.0 + d.idx as f64 * 0.1);
         let boost = intent_boost(intent, parsed, &d, now_ms);
@@ -138,38 +150,68 @@ fn intent_boost(intent: Intent, parsed: &Parsed, d: &Doc, now_ms: f64) -> f64 {
         }
     }
 
-    // Mirrors, caches, and archive snapshots almost never beat the source.
+    // Mirrors, caches, and archive snapshots are stale copies — they should
+    // essentially never outrank the live source.
     if MIRROR_HOSTS
         .iter()
         .any(|m| d.host == *m || d.host.ends_with(&format!(".{m}")))
     {
-        boost -= 0.30;
+        boost -= 0.55;
     }
 
-    // Host carrying a query term is likely the primary site for the topic.
-    if parsed
-        .terms
-        .iter()
-        .any(|t| t.len() > 2 && d.host.contains(t.as_str()))
-    {
+    boost += quality_prior(d);
+
+    // Host carrying the entity is likely the primary site for the topic —
+    // decisive for navigational queries, a hint otherwise.
+    if host_carries_term(&d.host, parsed) {
         boost += match intent {
-            Intent::Navigate => 0.30,
+            Intent::Navigate => 0.55,
             _ => 0.18,
         };
     }
 
     match intent {
         Intent::Navigate => {
-            let path_depth = d
-                .url
-                .split("://")
-                .nth(1)
-                .unwrap_or("")
-                .split('/')
-                .filter(|s| !s.is_empty())
-                .count();
-            if path_depth <= 1 {
-                boost += 0.20;
+            // URL anatomy separates destinations from utility pages: the
+            // homepage for "github" is depth-0 on github.com; the listing
+            // page for it is github.com/orgs/github/packages (depth 3).
+            let rest = d.url.split("://").nth(1).unwrap_or("");
+            let path = rest.split_once('/').map(|(_, p)| p).unwrap_or("");
+            let path_l = path.to_lowercase();
+            let path_depth = path.split('/').filter(|s| !s.is_empty()).count();
+
+            // Modifier in path: "github login" wants github.com/login.
+            // Segment-aware, so "/authenticate/elogin" doesn't count.
+            if parsed.terms.iter().any(|t| {
+                t.len() > 2
+                    && path_l
+                        .split(|c: char| !c.is_alphanumeric())
+                        .any(|p| p == t.as_str())
+            }) {
+                boost += 0.25;
+            }
+            match path_depth {
+                0..=1 => boost += 0.25, // canonical landing page
+                2 => {}
+                _ => boost -= 0.15, // deep listing/utility/community page
+            }
+            // Parameter-bloated URLs are tracking/utility endpoints, not
+            // destinations ("…/authorize?client_id=…&state=…").
+            if let Some((_, qs)) = path.split_once('?') {
+                if qs.len() > 40 {
+                    boost -= 0.12;
+                }
+            }
+            // A destination's title leads with the entity name
+            // ("GitHub · Let's build…", "Rust — Official site").
+            if parsed.terms.iter().any(|t| {
+                t.len() > 2
+                    && title_l
+                        .split_whitespace()
+                        .take(4)
+                        .any(|w| w.contains(t.as_str()))
+            }) {
+                boost += 0.18;
             }
         }
         Intent::Learn => {
@@ -177,12 +219,8 @@ fn intent_boost(intent: Intent, parsed: &Parsed, d: &Doc, now_ms: f64) -> f64 {
             if d.body.chars().count() > 200 {
                 boost += 0.08;
             }
-            // Documentation-style hosts.
-            if DOC_HOST_PREFIXES.iter().any(|p| d.host.starts_with(p))
-                || d.host.ends_with(".wikipedia.org")
-                || d.host.ends_with(".edu")
-                || d.host.ends_with(".gov")
-            {
+            // Documentation-style hosts (web naming convention).
+            if DOC_HOST_PREFIXES.iter().any(|p| d.host.starts_with(p)) {
                 boost += 0.15;
             }
             if d.date_raw.is_some() {
@@ -211,4 +249,107 @@ fn intent_boost(intent: Intent, parsed: &Parsed, d: &Doc, now_ms: f64) -> f64 {
         boost += 0.02;
     }
     boost
+}
+
+/// Structural quality prior — no domain whitelists: spam and thin-content
+/// pages betray themselves through URL shape, title stuffing, and
+/// fragment-soup extracts, so these signals generalize to any host.
+fn quality_prior(d: &Doc) -> f64 {
+    let mut q = 0.0;
+
+    // Domain shape: hyphen-chained or digit-spiked names are classic
+    // disposable/SEO domains ("best-cheap-widgets-2024.example"); real
+    // brands are short, clean labels. Punycode (xn--) marks IDN spoofs.
+    let domain_part = d
+        .host
+        .rsplit_once('.')
+        .map(|(rest, _)| rest)
+        .unwrap_or(&d.host);
+    let hyphens = domain_part.matches('-').count();
+    if hyphens >= 2 {
+        q -= 0.20;
+    }
+    if hyphens >= 1 && domain_part.chars().any(|c| c.is_ascii_digit()) {
+        q -= 0.10;
+    }
+    if domain_part.split('.').any(|l| l.starts_with("xn--")) {
+        q -= 0.15;
+    }
+
+    if title_stuffed(&d.title) {
+        q -= 0.20;
+    }
+
+    // Prose coherence: real articles and docs are complete sentences;
+    // nav dumps, link lists, and scraped fragments are not. Only judged
+    // when there's enough text to contain prose — a short snippet can't.
+    let body = d.body.trim();
+    if body.chars().count() >= 120 {
+        let total = body.chars().count();
+        let prose: usize = crate::snippet::split_sentences(body)
+            .iter()
+            .filter(|s| s.chars().count() >= 40)
+            .map(|s| s.chars().count())
+            .sum();
+        let ratio = prose as f64 / total as f64;
+        if ratio < 0.20 {
+            q -= 0.30; // fragment soup — thin or scraped content
+        } else if ratio > 0.55 {
+            q += 0.05;
+        }
+    }
+
+    // Restricted-registration namespaces carry institutional vetting.
+    if VETTED_TLDS
+        .iter()
+        .any(|t| d.host.ends_with(&format!(".{t}")))
+    {
+        q += 0.10;
+    }
+
+    // Nearly empty extracts mean the provider saw almost no content —
+    // thin, blocked, or boilerplate-only pages.
+    let body_len = d.body.trim().chars().count();
+    if body_len < 60 {
+        q -= 0.12;
+    }
+
+    // Independent spam signals compound: several at once means the page is
+    // almost certainly junk, so the demotion deepens non-linearly.
+    if q <= -0.45 {
+        q -= 0.35;
+    }
+    q
+}
+
+/// Does the host carry the entity as a domain label, or the whole query as
+/// a squashed brand? Label granularity keeps "login" from crediting
+/// "loginradius.com" while still matching "github"→github.com,
+/// "workers"→workers.cloudflare.com, "stack overflow"→stackoverflow.com.
+fn host_carries_term(host: &str, parsed: &Parsed) -> bool {
+    let labels: Vec<&str> = host.split('.').collect();
+    if labels.len() < 2 {
+        return false;
+    }
+    let domain = labels[..labels.len() - 1].join("."); // everything before the TLD
+    // Query term is a domain label or hyphen-part: "workers" ⊂ workers.cloudflare.com
+    if parsed.terms.iter().any(|t| {
+        t.len() > 2 && domain.split(['.', '-']).any(|p| p == t.as_str())
+    }) {
+        return true;
+    }
+    // Brand containment, either direction: "stack overflow" → stackoverflow.com,
+    // "cloudflare workers" → cloudflare.com. "loginradius" satisfies neither.
+    let brand = parsed.base.to_lowercase().replace(' ', "");
+    let sld = labels[labels.len() - 2].replace('-', "");
+    (sld.len() >= 4 && brand.contains(&sld)) || (brand.len() > 2 && sld.contains(&brand))
+}
+
+/// Keyword-stuffed title: dense separators, or several in a long title.
+fn title_stuffed(title: &str) -> bool {
+    let seps = title
+        .chars()
+        .filter(|c| TITLE_SEPARATORS.contains(c))
+        .count();
+    seps >= 3 || (seps >= 2 && title.chars().count() > 90)
 }

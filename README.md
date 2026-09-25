@@ -11,8 +11,23 @@ the [LangSearch](https://langsearch.com) Web Search API.
 ## Features
 
 - **Intent-aware ranking** — queries are classified (navigate / learn /
-  fresh / general) and rescored client-side with BM25, phrase matching,
-  a provider-order prior, and intent-conditioned boosts.
+  fresh / general; a bare single-token query counts as navigational) and
+  rescored client-side with BM25, phrase matching, a provider-order prior,
+  and intent-conditioned boosts. Navigational queries get structural
+  destination signals: entity-in-domain matching at label granularity,
+  modifier-in-path (`github login` → `github.com/login`), canonical
+  shallow-path preference, and demotion of deep listing pages and
+  parameter-bloated URLs.
+- **Structural quality prior** — no domain whitelists: spam reveals itself
+  through hyphen-chained/digit-spiked domains, punycode, keyword-stuffed
+  titles (which also lose BM25 weight), thin or fragment-soup extracts, and
+  compounding signals; restricted namespaces (.edu/.gov/.mil) get credit.
+- **Readable snippets** — instead of raw DOM text, the engine scores each
+  sentence by query-term coverage and returns the best passage extended
+  forward, skipping navigation chrome like "Pinned Discussions".
+- **Honest dates** — upstream `datePublished` is often stale crawl
+  metadata, so labels are relative only inside a week ("Today",
+  "3 days ago") and absolute ("Sep 14") beyond it — no fake precision.
 - **Search operators** — `site:example.com` / `-site:example.com` map to
   LangSearch `includeDomains`/`excludeDomains`; `"exact phrase"` boosts
   verbatim containment; `-term` drops matching documents.
@@ -74,7 +89,7 @@ crates/search-core/src/
 | Parameter | Default | Notes |
 | --- | --- | --- |
 | `q` | *(required)* | Query string, capped at 300 chars |
-| `count` | `30` | Upstream candidates fetched, `1`–`50` |
+| `count` | `50` | Upstream candidates fetched, `1`–`50` |
 | `freshness` | inferred | `noLimit`, `oneDay`, `oneWeek`, `oneMonth`, `oneYear`; omit to let the worker infer from recency language |
 
 Response: `query` (the operator-stripped form sent upstream),

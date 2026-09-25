@@ -40,11 +40,6 @@ pub struct Doc {
     pub body_terms: Vec<String>,
 }
 
-/// Does `host` match a filter domain (exact or subdomain)?
-fn host_matches(host: &str, domain: &str) -> bool {
-    host == domain || host.ends_with(&format!(".{domain}"))
-}
-
 /// Filter and normalize raw candidates into docs: drops entries without a
 /// URL, enforces `site:`/`-site:` and `-term` operators, dedupes by canonical
 /// URL and by (host, title), caps per-host count.
@@ -64,11 +59,11 @@ pub fn collect_docs(raw_results: Vec<RawResult>, parsed: &Parsed) -> Vec<Doc> {
         // Domain operators — upstream filters these too; this is a
         // defense-in-depth check for cached or expanded results.
         if !parsed.include_hosts.is_empty()
-            && !parsed.include_hosts.iter().any(|d| host_matches(&host, d))
+            && !parsed.include_hosts.iter().any(|d| url::host_matches(&host, d))
         {
             continue;
         }
-        if parsed.exclude_hosts.iter().any(|d| host_matches(&host, d)) {
+        if parsed.exclude_hosts.iter().any(|d| url::host_matches(&host, d)) {
             continue;
         }
 

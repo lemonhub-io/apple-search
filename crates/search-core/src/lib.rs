@@ -8,6 +8,7 @@ mod highlight;
 mod intent;
 mod model;
 mod rank;
+mod snippet;
 mod text;
 mod url;
 
@@ -48,7 +49,7 @@ pub fn process_results(query: &str, now_ms: f64, raw: &str) -> String {
             id: d.id,
             display: d.display.unwrap_or_else(|| url::display_of(&d.url)),
             snippet: highlight::mark_segments(
-                &text::truncate_chars(&d.body, SNIPPET_LIMIT),
+                &snippet::best_snippet(&d.body, &parsed.terms, SNIPPET_LIMIT),
                 &parsed.terms,
             ),
             date: d.date_raw.as_deref().and_then(|v| date::label(now_ms, v)),
@@ -103,6 +104,47 @@ mod tests {
         let primary = out.find("workers.cloudflare.com").unwrap();
         let archive = out.find("web.archive.org").unwrap();
         assert!(primary < archive);
+    }
+
+    #[test]
+    fn navigate_prefers_homepage_over_utility_pages() {
+        // The reported failure: listing/community pages outranked the
+        // official destination for a navigational query.
+        let raw = r#"[
+            {"url":"https://github.com/orgs/github/packages","name":"Packages · GitHub","snippet":"github packages listing"},
+            {"url":"https://github.com/orgs/github/discussions","name":"Discussions · GitHub","snippet":"github discussions community threads"},
+            {"url":"https://github.com/","name":"GitHub · Build software better","snippet":"github is where people build software"}
+        ]"#;
+        let out = process_results("github", 1_760_000_000_000.0, raw);
+        let home = out.find("\"https://github.com/\"").unwrap();
+        let pkgs = out.find("orgs/github/packages").unwrap();
+        assert!(home < pkgs, "homepage should outrank the packages listing");
+    }
+
+    #[test]
+    fn navigate_modifier_finds_action_page() {
+        // "github login" wants github.com/login, not the homepage.
+        let raw = r#"[
+            {"url":"https://github.com/","name":"GitHub · Build software better","snippet":"github is where people build software"},
+            {"url":"https://github.com/login","name":"Sign in to GitHub","snippet":"sign in to your github account"}
+        ]"#;
+        let out = process_results("github login", 1_760_000_000_000.0, raw);
+        let login = out.find("github.com/login").unwrap();
+        let home = out.find("\"https://github.com/\"").unwrap();
+        assert!(login < home, "the login page should win for 'github login'");
+    }
+
+    #[test]
+    fn seo_stuffed_domain_loses_to_clean_match() {
+        // Structural quality: hyphen-chained domain + fragment-soup extract.
+        let raw = r#"[
+            {"url":"https://best-rust-tutorial-2024.example.com/x","name":"Rust Tutorial | Learn Rust | Best Guide | Rust Examples | Top Tutorial","snippet":"Home | About | Links | Rust | More | Nav | Menu | Tags"},
+            {"url":"https://doc.rust-lang.org/book/","name":"The Rust Programming Language","snippet":"The Rust Programming Language is an official guide that teaches you how to write Rust programs. It covers ownership, borrowing, and the type system in detail."}
+        ]"#;
+        let out = process_results("rust tutorial", 1_760_000_000_000.0, raw);
+        let rustdoc = out.find("doc.rust-lang.org").unwrap();
+        let seo = out.find("best-rust-tutorial-2024").unwrap();
+        assert!(rustdoc < seo, "clean doc page should beat the SEO-stuffed page");
     }
 
     #[test]

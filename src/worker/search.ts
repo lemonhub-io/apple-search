@@ -9,7 +9,7 @@ import { FRESHNESS, inferFreshness, normalizeUrl, parseQuery, simplifyQuery } fr
 
 const CACHE_TTL = 300; // seconds
 const MAX_COUNT = 50;
-const DEFAULT_COUNT = 30;
+const DEFAULT_COUNT = 50; // upstream max — more candidates = better rerank input
 const STARVED_BELOW = 8; // fan out a simplified query under this many results
 const WIDEN_BELOW = 5;   // widen a narrowed freshness window under this many
 
