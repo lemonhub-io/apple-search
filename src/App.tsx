@@ -18,8 +18,27 @@ const FRESHNESS = [
   { id: "oneYear", label: "Past year" },
 ] as const;
 
+const THEME_KEY = "search-theme";
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
 function systemTheme(): Theme {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function initialTheme(): Theme {
+  const saved = localStorage.getItem(THEME_KEY);
+  return saved === "light" || saved === "dark" ? saved : systemTheme();
+}
+
+function isStandalone(): boolean {
+  return (
+    window.matchMedia?.("(display-mode: standalone)").matches === true ||
+    (navigator as { standalone?: boolean }).standalone === true
+  );
 }
 
 function queryFromLocation(): string | null {
@@ -34,11 +53,15 @@ export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [freshness, setFreshness] = useState<string>("noLimit");
-  const [theme, setTheme] = useState<Theme>(systemTheme);
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [online, setOnline] = useState(() => navigator.onLine);
+  const [installEvt, setInstallEvt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(isStandalone);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
-  const manualTheme = useRef(false);
+  const manualTheme = useRef(localStorage.getItem(THEME_KEY) !== null);
+  const pendingRetry = useRef<string | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -67,6 +90,13 @@ export default function App() {
         u.search = `?q=${encodeURIComponent(q)}`;
         history.pushState(null, "", u);
       }
+      if (!navigator.onLine) {
+        pendingRetry.current = q;
+        setResults([]);
+        setError("You’re offline. The app stays available — search needs a connection.");
+        setPhase("error");
+        return;
+      }
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&freshness=${fresh}&count=10`);
         let data: {
@@ -83,6 +113,7 @@ export default function App() {
         if (!res.ok) throw new Error(data.error || "Couldn’t complete the search.");
         const processed = await processResults(data.query ?? q, data.results ?? []);
         if (my !== seq.current) return;
+        pendingRetry.current = null;
         setResults(processed.results);
         setMeta({
           count: processed.results.length,
@@ -92,6 +123,7 @@ export default function App() {
         setPhase("done");
       } catch (e) {
         if (my !== seq.current) return;
+        if (!navigator.onLine) pendingRetry.current = q;
         setResults([]);
         setError(e instanceof Error && e.message ? e.message : "Couldn’t complete the search.");
         setPhase("error");
@@ -127,6 +159,50 @@ export default function App() {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
+  // Track connectivity; auto-retry a search that failed while offline.
+  useEffect(() => {
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (online && pendingRetry.current) {
+      const q = pendingRetry.current;
+      pendingRetry.current = null;
+      void runSearch(q, freshness);
+    }
+  }, [online, freshness, runSearch]);
+
+  // Offer install when the browser allows it; hide once installed.
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallEvt(e as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => {
+      setInstalled(true);
+      setInstallEvt(null);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const install = async () => {
+    if (!installEvt) return;
+    await installEvt.prompt();
+    if ((await installEvt.userChoice).outcome === "accepted") setInstallEvt(null);
+  };
+
   // "/" focuses the field, Escape clears it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -152,16 +228,26 @@ export default function App() {
           <MagIcon className="wordmark-icon" />
           Search
         </span>
-        <button
-          className="theme-btn"
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          onClick={() => {
-            manualTheme.current = true;
-            setTheme(theme === "dark" ? "light" : "dark");
-          }}
-        >
-          {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-        </button>
+        <div className="nav-side">
+          {!online && <span className="off-badge">Offline</span>}
+          {!installed && installEvt && (
+            <button className="install-btn" onClick={() => void install()}>
+              Install
+            </button>
+          )}
+          <button
+            className="theme-btn"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            onClick={() => {
+              manualTheme.current = true;
+              const next = theme === "dark" ? "light" : "dark";
+              localStorage.setItem(THEME_KEY, next);
+              setTheme(next);
+            }}
+          >
+            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+          </button>
+        </div>
       </header>
 
       <main className="main">

@@ -42,6 +42,14 @@ export default defineConfig({
         prefer_related_applications: false,
         handle_links: "preferred",
         launch_handler: { client_mode: ["navigate-existing", "auto"] },
+        shortcuts: [
+          {
+            name: "New search",
+            short_name: "Search",
+            url: "/",
+            icons: [{ src: "pwa-192.png", sizes: "192x192", type: "image/png" }],
+          },
+        ],
         icons,
         share_target: {
           action: "/",
