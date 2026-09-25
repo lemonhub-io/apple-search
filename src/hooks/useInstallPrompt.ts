@@ -27,8 +27,12 @@ export function useInstallPrompt() {
   const install = useCallback(async () => {
     if (!evt) return;
     await evt.prompt();
-    if ((await evt.userChoice).outcome === "accepted") setEvt(null);
+    if ((await evt.userChoice).outcome === "accepted") {
+      // Accepted counts as installed even before `appinstalled` fires.
+      setEvt(null);
+      setInstalled(true);
+    }
   }, [evt]);
 
-  return { canInstall: !installed && evt !== null, install };
+  return { canInstall: !installed && evt !== null, installed, install };
 }

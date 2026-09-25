@@ -14,7 +14,7 @@ import { ONBOARDED_KEY, queryFromLocation } from "./lib/platform";
 export default function App() {
   const online = useOnline();
   const { theme, toggle } = useTheme();
-  const { canInstall, install } = useInstallPrompt();
+  const { canInstall, installed, install } = useInstallPrompt();
   const reranker = useReranker();
   const { input, setInput, phase, results, meta, error, freshness, inputRef, runSearch } =
     useSearch(online, reranker.rescore);
@@ -37,9 +37,11 @@ export default function App() {
   );
   const onInstall = useCallback(() => void install(), [install]);
 
-  // "/" focuses the field, Escape clears it.
+  // "/" focuses the field, Escape clears it — but not while the onboarding
+  // overlay is up, where the covered field would swallow the keystrokes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!onboarded) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (e.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA") {
         e.preventDefault();
@@ -51,7 +53,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [inputRef, setInput]);
+  }, [onboarded, inputRef, setInput]);
 
   return (
     <div className="page">
@@ -67,6 +69,7 @@ export default function App() {
         {!onboarded && (
           <Onboarding
             canInstall={canInstall}
+            installed={installed}
             onInstall={onInstall}
             reranker={reranker}
             onDone={finishOnboarding}
@@ -79,6 +82,7 @@ export default function App() {
           onSubmit={() => void runSearch(input, freshness)}
           inputRef={inputRef}
           compact={phase !== "idle"}
+          autoFocus={onboarded}
         />
 
         {phase === "loading" && <Skeleton />}

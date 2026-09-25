@@ -7,11 +7,14 @@ interface Props {
   onSubmit: () => void;
   inputRef: RefObject<HTMLInputElement | null>;
   compact: boolean;
+  /// Skip autofocus while the onboarding overlay is up — the field is
+  /// covered, so focusing it would send keystrokes to a hidden element.
+  autoFocus?: boolean;
 }
 
 /// Hero headline plus the search form. `compact` collapses the hero once
 /// results (or a request) take over the page.
-export function SearchBox({ input, onInput, onSubmit, inputRef, compact }: Props) {
+export function SearchBox({ input, onInput, onSubmit, inputRef, compact, autoFocus = true }: Props) {
   return (
     <>
       <div className={`hero-wrap${compact ? " collapsed" : ""}`}>
@@ -39,7 +42,7 @@ export function SearchBox({ input, onInput, onSubmit, inputRef, compact }: Props
           spellCheck={false}
           enterKeyHint="search"
           aria-label="Search query"
-          autoFocus
+          autoFocus={autoFocus}
         />
         {input ? (
           <button type="button" className="clear" aria-label="Clear" onClick={() => onInput("")}>

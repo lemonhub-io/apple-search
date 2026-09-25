@@ -509,59 +509,178 @@ mark {
   justify-content: center;
   padding: 24px;
   background: var(--bg);
+  overflow-y: auto;
 }
 
-.ob-card {
+.ob {
   width: 100%;
-  max-width: 420px;
-  padding: 40px 36px 28px;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: var(--bg);
-  box-shadow: 0 12px 40px var(--shadow);
-  animation: rise 0.4s ease both;
-  text-align: center;
-}
-
-.ob-dots {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-  margin-bottom: 24px;
-}
-
-.ob-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--line);
-}
-
-.ob-dot.on {
-  background: var(--fg);
-}
-
-.ob-card h1 {
-  margin: 0 0 10px;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.ob-body {
-  margin: 0 0 24px;
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--fg2);
-}
-
-.ob-action {
-  min-height: 44px;
+  max-width: 440px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  margin-bottom: 20px;
+  text-align: center;
+}
+
+.ob-mark {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: var(--chip);
+  display: grid;
+  place-items: center;
+  margin-bottom: 26px;
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ob-mark svg {
+  width: 28px;
+  height: 28px;
+  color: var(--fg);
+}
+
+.ob-head {
+  margin: 0;
+  font-size: clamp(32px, 7vw, 42px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
+}
+
+.ob-sub {
+  margin: 12px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--fg2);
+  max-width: 36ch;
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both;
+}
+
+.ob-items {
+  width: 100%;
+  margin-top: 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+
+.ob-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 16px;
+  border-radius: 16px;
+  background: var(--chip);
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) calc(0.16s + var(--i, 0) * 60ms) both;
+}
+
+.ob-item:nth-child(1) {
+  --i: 0;
+}
+
+.ob-item:nth-child(2) {
+  --i: 1;
+}
+
+.ob-ico {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--fg2);
+  display: grid;
+  place-items: center;
+}
+
+.ob-ico svg {
+  width: 19px;
+  height: 19px;
+}
+
+.ob-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ob-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.ob-desc {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg2);
+}
+
+.ob-act {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.ob-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.ob-done svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ob-hint {
+  font-size: 12.5px;
+  color: var(--fg3);
+  white-space: nowrap;
+}
+
+.ob-prog {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.ob-prog-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.ob-prog-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--fg);
+  transition: width 0.2s ease;
+}
+
+.ob-prog-text {
+  font-size: 12px;
+  color: var(--fg3);
+}
+
+.ob-cta {
+  margin-top: 30px;
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+}
+
+.ob-note {
+  margin: 14px 0 0;
+  font-size: 12.5px;
+  color: var(--fg3);
 }
 
 .btn {
@@ -597,35 +716,9 @@ mark {
   color: var(--fg3);
 }
 
-.ob-foot {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-}
-
-.hint {
-  margin: 0;
+.btn.sm {
+  padding: 7px 16px;
   font-size: 13px;
-  color: var(--fg3);
-}
-
-.dl {
-  width: 100%;
-}
-
-.dl-bar {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--chip);
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-
-.dl-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--fg);
-  transition: width 0.2s ease;
 }
 
 /* ————— Small screens ————— */
@@ -649,6 +742,14 @@ mark {
 
   .r-display {
     max-width: 200px;
+  }
+
+  .onboarding {
+    padding:
+      max(24px, env(safe-area-inset-top, 0px))
+      max(18px, env(safe-area-inset-right, 0px))
+      max(24px, env(safe-area-inset-bottom, 0px))
+      max(18px, env(safe-area-inset-left, 0px));
   }
 }
 

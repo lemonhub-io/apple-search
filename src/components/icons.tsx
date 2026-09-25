@@ -44,3 +44,45 @@ export function MoonIcon() {
     </svg>
   );
 }
+
+export function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path
+        d="M10 3.5v8.2M6.3 8.3 10 12l3.7-3.7"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M4 16.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function SparkIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path
+        d="M10 2.5c.58 3.9 2.6 5.9 6.5 6.5-3.9.6-5.92 2.6-6.5 6.5-.58-3.9-2.6-5.9-6.5-6.5 3.9-.6 5.92-2.6 6.5-6.5Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function CheckIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M3 8.5l3.2 3.2L13 4.8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
