@@ -10,6 +10,7 @@ interface Meta {
   ms: number;
   intent: string;
   freshness: string;
+  widened: boolean;
   query: string;
 }
 
@@ -110,6 +111,7 @@ export default function App() {
           error?: string;
           query?: string;
           freshness?: string;
+          freshness_requested?: string;
           candidates?: number;
           results?: Parameters<typeof processResults>[1];
           took_ms?: number;
@@ -130,6 +132,9 @@ export default function App() {
           ms: (data.took_ms ?? 0) + processed.ms,
           intent: processed.intent,
           freshness: data.freshness ?? "noLimit",
+          widened:
+            !!data.freshness_requested &&
+            data.freshness_requested !== data.freshness,
           query: data.query ?? q,
         });
         setPhase("done");
@@ -326,6 +331,7 @@ export default function App() {
                 {meta.intent !== "general" && ` · ${meta.intent}`}
                 {freshness === "auto" && meta.freshness !== "noLimit" &&
                   ` · ${FRESHNESS.find((f) => f.id === meta.freshness)?.label.toLowerCase()}`}
+                {meta.widened && " · widened to any time"}
               </span>
               <nav className="fresh" aria-label="Filter by date">
                 {FRESHNESS.map((f) => (

@@ -55,33 +55,32 @@ async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<
   }
 
   const started = Date.now();
-  let upstream: Response;
-  try {
-    upstream = await fetch(UPSTREAM, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${env.LANGSEARCH_API_KEY}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ query, count, freshness, summary: true }),
-      signal: AbortSignal.timeout(9000),
-    });
-  } catch {
-    return json({ error: "Search provider timed out. Please try again." }, { status: 504 });
+  let payload = await callUpstream(env, query, count, freshness);
+  if (payload instanceof Response) {
+    return payload;
+  }
+
+  let value = payload.data?.webPages?.value ?? [];
+  let effectiveFreshness = freshness;
+
+  // A narrow freshness window can starve the query — widen and retry once.
+  if (freshness !== "noLimit" && value.length < 5) {
+    const retry = await callUpstream(env, query, count, "noLimit");
+    if (!(retry instanceof Response)) {
+      const widened = retry.data?.webPages?.value ?? [];
+      if (widened.length > value.length) {
+        payload = retry;
+        value = widened;
+        effectiveFreshness = "noLimit";
+      }
+    }
   }
 
   const tookMs = Date.now() - started;
-  const payload = (await upstream.json().catch(() => null)) as LangSearchResponse | null;
-
-  if (!upstream.ok || !payload || payload.code !== 200 || !payload.data) {
-    const message = payload?.msg ?? payload?.message ?? `Upstream error (HTTP ${upstream.status}).`;
-    return json({ error: message }, { status: upstream.status === 429 ? 429 : 502 });
-  }
-
-  const value = payload.data.webPages?.value ?? [];
   const body = {
-    query: payload.data.queryContext?.originalQuery ?? query,
-    freshness,
+    query: payload.data?.queryContext?.originalQuery ?? query,
+    freshness: effectiveFreshness,
+    freshness_requested: freshness,
     candidates: value.length,
     results: value.map((r, i) => ({
       id: r.id ?? `r${i}`,
@@ -101,6 +100,37 @@ async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<
   });
   ctx.waitUntil(cache.put(cacheKey, res.clone()));
   return res;
+}
+
+/// Single upstream call. Returns the parsed payload, or an error Response
+/// ready to send to the client.
+async function callUpstream(
+  env: Env,
+  query: string,
+  count: number,
+  freshness: string,
+): Promise<LangSearchResponse | Response> {
+  let upstream: Response;
+  try {
+    upstream = await fetch(UPSTREAM, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.LANGSEARCH_API_KEY}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ query, count, freshness, summary: true }),
+      signal: AbortSignal.timeout(9000),
+    });
+  } catch {
+    return json({ error: "Search provider timed out. Please try again." }, { status: 504 });
+  }
+
+  const payload = (await upstream.json().catch(() => null)) as LangSearchResponse | null;
+  if (!upstream.ok || !payload || payload.code !== 200 || !payload.data) {
+    const message = payload?.msg ?? payload?.message ?? `Upstream error (HTTP ${upstream.status}).`;
+    return json({ error: message }, { status: upstream.status === 429 ? 429 : 502 });
+  }
+  return payload;
 }
 
 /// Map recency language to a LangSearch freshness window.
