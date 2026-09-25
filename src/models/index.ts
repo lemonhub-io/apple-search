@@ -112,13 +112,17 @@ export default {
       if (!obj) return notFound();
       const h = objectHeaders(key);
       obj.writeHttpMetadata(h);
-      if (ranged) {
-        // R2 reports the effective range regardless of request shape.
-        const r = obj.range as { offset: number; end: number };
-        h.set("Content-Range", `bytes ${r.offset}-${r.end}/${obj.size}`);
-        h.set("Content-Length", String(r.end - r.offset + 1));
-      } else {
+      if (offset === null) {
         h.set("Content-Length", String(obj.size));
+      } else {
+        // Compute the effective range ourselves — obj.range's shape varies
+        // with the request form ({offset,length} here, not {offset,end}).
+        if (offset >= obj.size) {
+          return new Response("Invalid range", { status: 416, headers: baseHeaders() });
+        }
+        const end = Math.min(obj.size - 1, offset + (length ?? obj.size - offset) - 1);
+        h.set("Content-Range", `bytes ${offset}-${end}/${obj.size}`);
+        h.set("Content-Length", String(end - offset + 1));
       }
       res = new Response(obj.body, { status: ranged ? 206 : 200, headers: h });
     }
