@@ -29,6 +29,7 @@ export interface ApiResult {
 
 export interface Processed {
   results: UiResult[];
+  intent: string;
   ms: number;
 }
 
@@ -73,6 +74,6 @@ export async function processResults(query: string, apiResults: ApiResult[]): Pr
   const t0 = performance.now();
   const wasm = await loadEngine();
   const out = wasm.process_results(query, Date.now(), JSON.stringify(apiResults));
-  const parsed = JSON.parse(out) as { results: UiResult[] };
-  return { results: parsed.results, ms: performance.now() - t0 };
+  const parsed = JSON.parse(out) as { results: UiResult[]; intent: string };
+  return { results: parsed.results, intent: parsed.intent ?? "general", ms: performance.now() - t0 };
 }

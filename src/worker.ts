@@ -38,10 +38,11 @@ async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<
     return json({ error: "Search backend is not configured (missing LANGSEARCH_API_KEY)." }, { status: 503 });
   }
 
-  const freshParam = url.searchParams.get("freshness") ?? "noLimit";
-  const freshness = FRESHNESS.has(freshParam) ? freshParam : "noLimit";
-  const countParam = Number(url.searchParams.get("count") ?? "10");
-  const count = Number.isFinite(countParam) ? Math.min(Math.max(Math.trunc(countParam), 1), 10) : 10;
+  // Absent or unrecognized freshness → infer from recency markers in the query.
+  const freshParam = url.searchParams.get("freshness");
+  const freshness = freshParam && FRESHNESS.has(freshParam) ? freshParam : inferFreshness(query);
+  const countParam = Number(url.searchParams.get("count") ?? "30");
+  const count = Number.isFinite(countParam) ? Math.min(Math.max(Math.trunc(countParam), 1), 50) : 30;
 
   // Canonical cache key so identical searches share one edge-cached entry.
   const cacheKey = new Request(`${url.origin}/api/search?q=${encodeURIComponent(query)}&f=${freshness}&n=${count}`);
@@ -62,7 +63,7 @@ async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<
         authorization: `Bearer ${env.LANGSEARCH_API_KEY}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ query, count, freshness }),
+      body: JSON.stringify({ query, count, freshness, summary: true }),
       signal: AbortSignal.timeout(9000),
     });
   } catch {
@@ -80,6 +81,8 @@ async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<
   const value = payload.data.webPages?.value ?? [];
   const body = {
     query: payload.data.queryContext?.originalQuery ?? query,
+    freshness,
+    candidates: value.length,
     results: value.map((r, i) => ({
       id: r.id ?? `r${i}`,
       name: r.name ?? null,
@@ -98,6 +101,19 @@ async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<
   });
   ctx.waitUntil(cache.put(cacheKey, res.clone()));
   return res;
+}
+
+/// Map recency language to a LangSearch freshness window.
+function inferFreshness(query: string): string {
+  const q = ` ${query.toLowerCase()} `;
+  const has = (...markers: string[]) => markers.some((m) => q.includes(` ${m} `));
+  if (has("today", "tonight", "breaking", "right now")) return "oneDay";
+  if (has("latest", "news", "recent", "recently", "this week", "weekly", "announced", "update", "updates")) {
+    return "oneWeek";
+  }
+  if (has("this month", "monthly")) return "oneMonth";
+  if (has("this year", "annual", "yearly")) return "oneYear";
+  return "noLimit";
 }
 
 interface LangSearchResult {

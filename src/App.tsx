@@ -6,11 +6,15 @@ type Theme = "light" | "dark";
 
 interface Meta {
   count: number;
+  candidates: number;
   ms: number;
+  intent: string;
+  freshness: string;
   query: string;
 }
 
 const FRESHNESS = [
+  { id: "auto", label: "Auto" },
   { id: "noLimit", label: "Any time" },
   { id: "oneDay", label: "Past day" },
   { id: "oneWeek", label: "Past week" },
@@ -52,7 +56,7 @@ export default function App() {
   const [results, setResults] = useState<UiResult[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [freshness, setFreshness] = useState<string>("noLimit");
+  const [freshness, setFreshness] = useState<string>("auto");
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [online, setOnline] = useState(() => navigator.onLine);
   const [installEvt, setInstallEvt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -98,10 +102,15 @@ export default function App() {
         return;
       }
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&freshness=${fresh}&count=10`);
+        // "auto" omits the filter entirely so the worker can infer freshness
+        // from recency markers in the query.
+        const f = fresh === "auto" ? "" : `&freshness=${fresh}`;
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}${f}&count=30`);
         let data: {
           error?: string;
           query?: string;
+          freshness?: string;
+          candidates?: number;
           results?: Parameters<typeof processResults>[1];
           took_ms?: number;
         };
@@ -117,7 +126,10 @@ export default function App() {
         setResults(processed.results);
         setMeta({
           count: processed.results.length,
+          candidates: data.candidates ?? processed.results.length,
           ms: (data.took_ms ?? 0) + processed.ms,
+          intent: processed.intent,
+          freshness: data.freshness ?? "noLimit",
           query: data.query ?? q,
         });
         setPhase("done");
@@ -310,7 +322,10 @@ export default function App() {
           <section className="results-zone">
             <div className="rmeta">
               <span className="rmeta-left">
-                {meta.count} result{meta.count === 1 ? "" : "s"} · {meta.ms.toFixed(0)} ms
+                {meta.count} of {meta.candidates} · {meta.ms.toFixed(0)} ms
+                {meta.intent !== "general" && ` · ${meta.intent}`}
+                {freshness === "auto" && meta.freshness !== "noLimit" &&
+                  ` · ${FRESHNESS.find((f) => f.id === meta.freshness)?.label.toLowerCase()}`}
               </span>
               <nav className="fresh" aria-label="Filter by date">
                 {FRESHNESS.map((f) => (
