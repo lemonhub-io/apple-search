@@ -6,13 +6,15 @@ interface Props {
   canInstall: boolean;
   installed: boolean;
   onInstall: () => void;
+  /// Plays the exit transition; the parent unmounts after it settles.
+  leaving?: boolean;
   onDone: () => void;
 }
 
 /// First-run install guide: a one-tap install when the browser offers it,
 /// plus per-platform steps otherwise. Entirely optional — the CTA and Esc
 /// both dismiss it.
-export function Onboarding({ canInstall, installed, onInstall, onDone }: Props) {
+export function Onboarding({ canInstall, installed, onInstall, leaving, onDone }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onDone();
@@ -22,7 +24,7 @@ export function Onboarding({ canInstall, installed, onInstall, onDone }: Props) 
   }, [onDone]);
 
   return (
-    <div className="onboarding">
+    <div className={`onboarding${leaving ? " out" : ""}`}>
       <div className="ob" role="dialog" aria-modal="true" aria-labelledby="ob-title">
         <div className="ob-mark" aria-hidden>
           <DownloadIcon />

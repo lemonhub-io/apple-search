@@ -28,7 +28,10 @@ export function Nav({ online, theme, onToggleTheme, canInstall, onInstall }: Pro
           aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           onClick={onToggleTheme}
         >
-          {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+          {/* Keyed remount replays the spin-in on every flip. */}
+          <span className="theme-ico" key={theme}>
+            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+          </span>
         </button>
       </div>
     </header>

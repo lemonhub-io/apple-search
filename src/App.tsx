@@ -22,10 +22,23 @@ export default function App() {
   const [onboarded, setOnboarded] = useState(
     () => localStorage.getItem(ONBOARDED_KEY) === "1" || !!queryFromLocation(),
   );
+  // Dismissal plays the exit transition first — the overlay unmounts after
+  // it settles so the page doesn't jump.
+  const [obLeaving, setObLeaving] = useState(false);
   const finishOnboarding = () => {
+    if (obLeaving) return;
     localStorage.setItem(ONBOARDED_KEY, "1");
-    setOnboarded(true);
+    setObLeaving(true);
   };
+  useEffect(() => {
+    if (!obLeaving) return;
+    const t = setTimeout(() => {
+      setOnboarded(true);
+      // autoFocus only applies on mount — land the caret explicitly.
+      inputRef.current?.focus();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [obLeaving, inputRef]);
 
   // Stable callbacks — Results is memoized, so inline arrows would defeat it.
   const query = meta?.query ?? "";
@@ -69,6 +82,7 @@ export default function App() {
             canInstall={canInstall}
             installed={installed}
             onInstall={onInstall}
+            leaving={obLeaving}
             onDone={finishOnboarding}
           />
         )}

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   detectBrowser,
   detectPlatform,
@@ -200,8 +200,12 @@ export function InstallGuide() {
         ))}
       </div>
       <div className="ob-guide-body">
-        {sections.map((s) => (
-          <section className="ob-guide-sec" key={s.name}>
+        {sections.map((s, i) => (
+          <section
+            className="ob-guide-sec"
+            key={s.name}
+            style={{ "--gi": i } as CSSProperties}
+          >
             <p className="ob-guide-name">{s.name}</p>
             {s.steps.length > 1 ? (
               <ol className="ob-steps">
