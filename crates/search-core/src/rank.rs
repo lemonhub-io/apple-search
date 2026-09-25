@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use crate::date;
 use crate::intent::Intent;
 use crate::model::Doc;
-use crate::text;
+use crate::text::Parsed;
 
 // BM25 field weights and saturation constants.
 const K1: f64 = 1.2;
@@ -31,8 +31,7 @@ const DOC_HOST_PREFIXES: &[&str] = &[
 /// descending, ties broken by provider position.
 pub fn score_all(
     docs: Vec<Doc>,
-    terms: &[String],
-    query: &str,
+    parsed: &Parsed,
     intent: Intent,
     now_ms: f64,
 ) -> Vec<(usize, f64, Doc)> {
@@ -43,10 +42,10 @@ pub fn score_all(
 
     let mut scored: Vec<(usize, f64, Doc)> = Vec::with_capacity(docs.len());
     for d in docs {
-        let bm = TITLE_W * bm25(&d.title_terms, terms, &df, avg_title, n)
-            + BODY_W * bm25(&d.body_terms, terms, &df, avg_body, n);
+        let bm = TITLE_W * bm25(&d.title_terms, &parsed.terms, &df, avg_title, n)
+            + BODY_W * bm25(&d.body_terms, &parsed.terms, &df, avg_body, n);
         let prior = 1.0 / (1.0 + d.idx as f64 * 0.1);
-        let boost = intent_boost(intent, query, terms, &d, now_ms);
+        let boost = intent_boost(intent, parsed, &d, now_ms);
         scored.push((d.idx, bm * (1.0 - PRIOR_W) + prior * PRIOR_W + boost, d));
     }
     scored.sort_by(|a, b| {
@@ -106,13 +105,26 @@ fn bm25(
 }
 
 /// Intent-conditioned adjustments layered on top of BM25 + provider prior.
-fn intent_boost(intent: Intent, query: &str, terms: &[String], d: &Doc, now_ms: f64) -> f64 {
+fn intent_boost(intent: Intent, parsed: &Parsed, d: &Doc, now_ms: f64) -> f64 {
     let mut boost = 0.0;
     let title_l = d.title.to_lowercase();
     let body_l = d.body.to_lowercase();
-    let q_norm = text::clean(query).to_lowercase();
+    let url_l = d.url.to_lowercase();
 
-    // Exact phrase containment — the single strongest intent signal.
+    // Quoted phrases ("exact match") get their own strong containment bonus.
+    for ph in &parsed.phrases {
+        if title_l.contains(ph.as_str()) {
+            boost += 0.40;
+        } else if body_l.contains(ph.as_str()) {
+            boost += 0.15;
+        }
+        if url_l.contains(&ph.replace(' ', "-")) {
+            boost += 0.15;
+        }
+    }
+
+    // Whole-query containment — the single strongest implicit signal.
+    let q_norm = parsed.base.to_lowercase();
     if q_norm.chars().count() >= 3 {
         if title_l.contains(&q_norm) {
             boost += 0.45;
@@ -121,7 +133,7 @@ fn intent_boost(intent: Intent, query: &str, terms: &[String], d: &Doc, now_ms: 
         }
         // Slug form in URL: "cloudflare workers" → ".../cloudflare-workers/..."
         let slug = q_norm.split_whitespace().collect::<Vec<_>>().join("-");
-        if !slug.is_empty() && d.url.to_lowercase().contains(&slug) {
+        if !slug.is_empty() && url_l.contains(&slug) {
             boost += 0.18;
         }
     }
@@ -135,7 +147,8 @@ fn intent_boost(intent: Intent, query: &str, terms: &[String], d: &Doc, now_ms: 
     }
 
     // Host carrying a query term is likely the primary site for the topic.
-    if terms
+    if parsed
+        .terms
         .iter()
         .any(|t| t.len() > 2 && d.host.contains(t.as_str()))
     {

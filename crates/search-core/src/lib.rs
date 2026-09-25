@@ -30,23 +30,26 @@ pub fn clean_query(input: &str) -> String {
 /// `raw` is a JSON array of result objects; `now_ms` is the client's epoch ms.
 #[wasm_bindgen]
 pub fn process_results(query: &str, now_ms: f64, raw: &str) -> String {
-    let terms = text::query_terms(query);
-    let intent = intent::classify(query);
+    let parsed = text::parse_query(query);
+    let intent = intent::classify(&parsed.base);
     let raw_results: Vec<RawResult> = serde_json::from_str(raw).unwrap_or_default();
-    let docs = model::collect_docs(raw_results);
+    let docs = model::collect_docs(raw_results, &parsed);
 
-    let scored = rank::score_all(docs, &terms, query, intent, now_ms);
+    let scored = rank::score_all(docs, &parsed, intent, now_ms);
 
     let results = scored
         .into_iter()
         .take(MAX_RESULTS)
         .map(|(_, score, d)| UiResult {
-            title: highlight::mark_segments(&text::truncate_chars(&d.title, TITLE_LIMIT), &terms),
+            title: highlight::mark_segments(
+                &text::truncate_chars(&d.title, TITLE_LIMIT),
+                &parsed.terms,
+            ),
             id: d.id,
             display: d.display.unwrap_or_else(|| url::display_of(&d.url)),
             snippet: highlight::mark_segments(
                 &text::truncate_chars(&d.body, SNIPPET_LIMIT),
-                &terms,
+                &parsed.terms,
             ),
             date: d.date_raw.as_deref().and_then(|v| date::label(now_ms, v)),
             host: d.host,

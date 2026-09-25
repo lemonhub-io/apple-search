@@ -4,8 +4,8 @@
 import type { SearchResponse } from "../api";
 import type { Env } from "./env";
 import { json } from "./http";
-import { callUpstream, type LangSearchResult } from "./langsearch";
-import { FRESHNESS, inferFreshness, normalizeUrl, simplifyQuery } from "./query";
+import { callUpstream, type LangSearchResult, type SearchOptions } from "./langsearch";
+import { FRESHNESS, inferFreshness, normalizeUrl, parseQuery, simplifyQuery } from "./query";
 
 const CACHE_TTL = 300; // seconds
 const MAX_COUNT = 50;
@@ -14,13 +14,18 @@ const STARVED_BELOW = 8; // fan out a simplified query under this many results
 const WIDEN_BELOW = 5;   // widen a narrowed freshness window under this many
 
 export async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const query = (url.searchParams.get("q") ?? "").trim().replace(/\s+/g, " ").slice(0, 300);
-  if (!query) {
+  const raw = (url.searchParams.get("q") ?? "").trim().replace(/\s+/g, " ").slice(0, 300);
+  if (!raw) {
     return json({ error: "Missing query parameter `q`." }, { status: 400 });
   }
   if (!env.LANGSEARCH_API_KEY) {
     return json({ error: "Search backend is not configured (missing LANGSEARCH_API_KEY)." }, { status: 503 });
   }
+
+  // Operators (site:, -site:, "phrase", -term) are parsed out before the
+  // upstream call; the client-side engine re-applies them during ranking.
+  const parsed = parseQuery(raw);
+  const query = parsed.upstream;
 
   // Absent or unrecognized freshness → infer from recency markers in the query.
   const freshParam = url.searchParams.get("freshness");
@@ -32,7 +37,7 @@ export async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): P
 
   // Canonical cache key so identical searches share one edge-cached entry.
   const cacheKey = new Request(
-    `${url.origin}/api/search?q=${encodeURIComponent(query)}&f=${freshness}&n=${count}`,
+    `${url.origin}/api/search?q=${encodeURIComponent(raw)}&f=${freshness}&n=${count}`,
   );
   const cache = (caches as unknown as { default: Cache }).default;
   const hit = await cache.match(cacheKey);
@@ -42,8 +47,13 @@ export async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): P
     return res;
   }
 
+  const domains: Pick<SearchOptions, "includeDomains" | "excludeDomains"> = {
+    includeDomains: parsed.includeDomains,
+    excludeDomains: parsed.excludeDomains,
+  };
+
   const started = Date.now();
-  let payload = await callUpstream(env, query, count, freshness);
+  let payload = await callUpstream(env, query, { count, freshness, retry: true, ...domains });
   if (payload instanceof Response) {
     return payload;
   }
@@ -53,7 +63,7 @@ export async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): P
 
   // A narrow freshness window can starve the query — widen and retry once.
   if (freshness !== "noLimit" && value.length < WIDEN_BELOW) {
-    const retry = await callUpstream(env, query, count, "noLimit");
+    const retry = await callUpstream(env, query, { count, freshness: "noLimit", ...domains });
     if (!(retry instanceof Response)) {
       const widened = retry.data?.webPages?.value ?? [];
       if (widened.length > value.length) {
@@ -70,7 +80,7 @@ export async function handleSearch(url: URL, env: Env, ctx: ExecutionContext): P
   if (value.length < STARVED_BELOW) {
     const alt = simplifyQuery(query);
     if (alt) {
-      const extra = await callUpstream(env, alt, count, "noLimit");
+      const extra = await callUpstream(env, alt, { count, freshness: "noLimit", ...domains });
       if (!(extra instanceof Response)) {
         const have = new Set(value.map((r) => normalizeUrl(r.url)));
         let added = 0;

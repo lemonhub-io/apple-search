@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 use crate::highlight::Segment;
-use crate::{text, url};
+use crate::text::{self, Parsed};
+use crate::url;
 
 /// Max results admitted per host before the engine moves on.
 const MAX_PER_HOST: usize = 3;
@@ -39,9 +40,15 @@ pub struct Doc {
     pub body_terms: Vec<String>,
 }
 
+/// Does `host` match a filter domain (exact or subdomain)?
+fn host_matches(host: &str, domain: &str) -> bool {
+    host == domain || host.ends_with(&format!(".{domain}"))
+}
+
 /// Filter and normalize raw candidates into docs: drops entries without a
-/// URL, dedupes by canonical URL and by (host, title), caps per-host count.
-pub fn collect_docs(raw_results: Vec<RawResult>) -> Vec<Doc> {
+/// URL, enforces `site:`/`-site:` and `-term` operators, dedupes by canonical
+/// URL and by (host, title), caps per-host count.
+pub fn collect_docs(raw_results: Vec<RawResult>, parsed: &Parsed) -> Vec<Doc> {
     let mut seen = HashSet::new();
     let mut seen_titles: HashSet<(String, String)> = HashSet::new();
     let mut per_host: HashMap<String, usize> = HashMap::new();
@@ -53,6 +60,18 @@ pub fn collect_docs(raw_results: Vec<RawResult>) -> Vec<Doc> {
             _ => continue,
         };
         let host = url::host_of(&url_str);
+
+        // Domain operators — upstream filters these too; this is a
+        // defense-in-depth check for cached or expanded results.
+        if !parsed.include_hosts.is_empty()
+            && !parsed.include_hosts.iter().any(|d| host_matches(&host, d))
+        {
+            continue;
+        }
+        if parsed.exclude_hosts.iter().any(|d| host_matches(&host, d)) {
+            continue;
+        }
+
         if !seen.insert(url::dedupe_key(&url_str)) {
             continue;
         }
@@ -70,12 +89,6 @@ pub fn collect_docs(raw_results: Vec<RawResult>) -> Vec<Doc> {
             continue;
         }
 
-        let count = per_host.entry(host.clone()).or_insert(0);
-        if *count >= MAX_PER_HOST {
-            continue;
-        }
-        *count += 1;
-
         let body = [r.snippet.as_deref(), r.summary.as_deref(), r.text.as_deref()]
             .into_iter()
             .flatten()
@@ -83,6 +96,18 @@ pub fn collect_docs(raw_results: Vec<RawResult>) -> Vec<Doc> {
             .join(" ")
             .trim()
             .to_string();
+
+        // -term exclusion: a doc carrying the term anywhere is out.
+        let haystack = format!("{} {} {}", title.to_lowercase(), body.to_lowercase(), host);
+        if parsed.excluded.iter().any(|t| haystack.contains(t.as_str())) {
+            continue;
+        }
+
+        let count = per_host.entry(host.clone()).or_insert(0);
+        if *count >= MAX_PER_HOST {
+            continue;
+        }
+        *count += 1;
 
         docs.push(Doc {
             idx,

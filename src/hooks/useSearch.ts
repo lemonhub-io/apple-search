@@ -64,7 +64,9 @@ export function useSearch(online: boolean): SearchState {
     }
     try {
       const data = await fetchSearch(q, fresh);
-      const processed = await processResults(data.query ?? q, data.results ?? []);
+      // The engine re-parses the raw query itself — operators like
+      // site: / -term / "phrase" still apply during ranking.
+      const processed = await processResults(q, data.results ?? []);
       if (my !== seq.current) return;
       pendingRetry.current = null;
       setResults(processed.results);
