@@ -48,6 +48,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
   transition: background 0.35s ease, color 0.35s ease;
 }
 
@@ -252,6 +253,7 @@ mark {
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.04;
+  text-wrap: balance;
 }
 
 /* ————— Search box ————— */
@@ -360,9 +362,18 @@ mark {
 .fresh {
   display: flex;
   gap: 2px;
+  /* Narrow screens: the pills scroll sideways instead of squishing. */
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+
+.fresh::-webkit-scrollbar {
+  display: none;
 }
 
 .fresh-link {
+  flex: none;
   font-size: 12.5px;
   color: var(--fg3);
   padding: 4px 10px;
@@ -574,6 +585,9 @@ mark {
   padding: 24px;
   background: var(--bg);
   overflow-y: auto;
+  /* Keep the overlay's scroll contained — no pull-to-refresh chaining
+     into the page beneath. */
+  overscroll-behavior: contain;
   transition: background-color 0.3s ease;
   animation: ob-veil 0.28s ease both;
 }
@@ -643,6 +657,7 @@ mark {
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.05;
+  text-wrap: balance;
   animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
 }
 
@@ -899,6 +914,19 @@ mark {
       max(18px, env(safe-area-inset-left, 0px));
   }
 
+  /* Denser reading rhythm on small screens. */
+  .results-zone {
+    margin-top: 20px;
+  }
+
+  .rlist > li {
+    padding: 22px 0;
+  }
+
+  .r-title {
+    font-size: 18px;
+  }
+
   .r-display {
     max-width: 200px;
   }
@@ -909,6 +937,95 @@ mark {
       max(18px, env(safe-area-inset-right, 0px))
       max(24px, env(safe-area-inset-bottom, 0px))
       max(18px, env(safe-area-inset-left, 0px));
+  }
+}
+
+/* Short viewports (landscape phones, shallow windows): the hero's 72px
+   floor crowds the box — compact it so search stays above the fold. */
+@media (max-height: 480px) {
+  .hero {
+    padding-top: clamp(32px, 10vh, 72px);
+    padding-bottom: 28px;
+  }
+
+  .headline {
+    font-size: clamp(30px, 9vh, 46px);
+  }
+
+  .box {
+    margin-top: 14px;
+  }
+}
+
+/* Touch: hover styles stick after taps and read as bugs — strip them and
+   rely on :active. The "/" hint is keyboard-only, so hide it outright. */
+@media (hover: none) {
+  .kbd {
+    display: none;
+  }
+
+  .theme-btn:hover {
+    background: transparent;
+    color: var(--fg2);
+  }
+
+  .install-btn:hover {
+    color: var(--fg2);
+    border-color: var(--line);
+  }
+
+  .fresh-link:hover {
+    color: var(--fg3);
+    background: transparent;
+  }
+
+  .ob-chip:hover {
+    color: var(--fg2);
+    border-color: var(--line);
+  }
+
+  .clear:hover {
+    color: var(--fg3);
+  }
+
+  .box:hover {
+    border-color: var(--line);
+    box-shadow: none;
+  }
+
+  .r-title {
+    text-decoration-color: transparent !important;
+  }
+}
+
+/* Coarse pointers: widen hit areas to comfortable thumb targets — the
+   visual design doesn't change, only the tappable footprint. */
+@media (pointer: coarse) {
+  .theme-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .install-btn {
+    padding: 9px 16px;
+  }
+
+  .fresh-link {
+    padding: 7px 12px;
+  }
+
+  .ob-chip {
+    padding: 9px 15px;
+  }
+
+  .clear {
+    width: 34px;
+    height: 34px;
+    margin-right: -8px;
+  }
+
+  .btn.sm {
+    padding: 9px 18px;
   }
 }
 
