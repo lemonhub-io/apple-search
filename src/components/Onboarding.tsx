@@ -120,7 +120,7 @@ function ModelItem({ reranker }: { reranker: RerankerState }) {
             {status === "ready"
               ? "The model is on this device. Nothing leaves it."
               : status === "error"
-                ? "Download failed. You can retry or skip this."
+                ? `Setup failed${reranker.error ? `: ${reranker.error}` : ". You can retry or skip this."}`
                 : `On-device AI re-ranks results for relevance. ~${MODEL_MB} MB, downloaded once.`}
           </span>
         )}

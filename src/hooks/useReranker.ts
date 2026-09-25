@@ -8,6 +8,7 @@ export interface RerankerState {
   status: AiStatus;
   enabled: boolean;
   progress: number | null; // 0..1 while downloading
+  error: string | null; // real failure reason when status === "error"
   enable: () => void;
   disable: () => void;
   /// Score the stage-1 top results; returns logits aligned to the raw
@@ -81,5 +82,7 @@ export function useReranker(): RerankerState {
     return out;
   }, []);
 
-  return { status, enabled, progress, enable, disable, rescore };
+  // reranker.error is set before the status flips to "error", so reading it
+  // at render time always reflects the failure that triggered this render.
+  return { status, enabled, progress, error: reranker.error, enable, disable, rescore };
 }

@@ -12,6 +12,7 @@ const SCORE_TIMEOUT_MS = 60_000;
 
 let worker: Worker | null = null;
 let status: AiStatus = "off";
+let lastError: string | null = null;
 let seq = 0;
 const pending = new Map<number, { res: (s: number[]) => void; rej: (e: Error) => void }>();
 const listeners = new Set<Listener>();
@@ -45,13 +46,18 @@ function ensureWorker(): Worker {
           pending.get(m.id)?.rej(new Error(m.message));
           pending.delete(m.id);
         } else {
-          rejectAll(new Error(m.message ?? "Reranker failed"));
+          const msg = m.message ?? "Reranker failed";
+          lastError = msg;
+          console.error("[ai]", msg);
+          rejectAll(new Error(msg));
           setStatus("error");
         }
       }
     };
-    worker.onerror = () => {
-      rejectAll(new Error("Reranker worker crashed"));
+    worker.onerror = (e) => {
+      lastError = e.message || "Reranker worker crashed";
+      console.error("[ai]", lastError);
+      rejectAll(new Error(lastError));
       setStatus("error");
     };
   }
@@ -61,6 +67,10 @@ function ensureWorker(): Worker {
 export const reranker = {
   get status(): AiStatus {
     return status;
+  },
+
+  get error(): string | null {
+    return lastError;
   },
 
   onStatus(l: Listener): () => void {
@@ -75,6 +85,7 @@ export const reranker = {
       return; // already running — a second click must not flap the session
     }
     progressCb = onProgress ?? null;
+    lastError = null;
     setStatus("loading");
     ensureWorker().postMessage({ type: "init" });
   },

@@ -15,8 +15,9 @@ const out = join(root, "public/ort", version);
 mkdirSync(out, { recursive: true });
 let copied = 0;
 for (const f of readdirSync(dist)) {
-  // wasm backend files only — jsep.* is the WebGPU path we don't use.
-  if (/^ort-wasm.*\.(wasm|mjs)$/.test(f) && !f.includes("jsep")) {
+  // Copy every wasm artifact, jsep included — the threaded init path imports
+  // ort-wasm-simd-threaded.jsep.mjs even when only the wasm EP is used.
+  if (/^ort-wasm.*\.(wasm|mjs)$/.test(f)) {
     cpSync(join(dist, f), join(out, f));
     copied++;
   }
