@@ -17,10 +17,9 @@ import { AutoTokenizer, env } from "@huggingface/transformers";
 
 const REPO = "jinaai/jina-reranker-v2-base-multilingual";
 const MODEL_FILE = "onnx/model_quantized.onnx"; // int8, ~280 MB
-const MODEL_HOSTS = [
-  "https://huggingface.co",
-  "https://hf-mirror.com", // fallback for networks where hf.co is unreachable
-];
+// Self-hosted: model artifacts live in R2 behind models.asearch.world — no
+// huggingface.co runtime dependency (supply chain pinned to our bucket).
+const MODEL_HOSTS = ["https://models.asearch.world"];
 const OPFS_NAME = "jina-reranker-v2-q8.onnx";
 const MAX_LEN = 256;
 const BATCH = 8;
@@ -57,6 +56,9 @@ async function init() {
     ? Math.min(4, navigator.hardwareConcurrency || 1)
     : 1;
   env.allowLocalModels = false;
+  // Tokenizer files are served from our bucket in HF repo layout
+  // (trailing slash — env builds `${remoteHost}{model}/resolve/{rev}/...`).
+  env.remoteHost = `${MODEL_HOSTS[0]}/`;
 
   const bytes = await modelBytes();
   const t0 = performance.now();
@@ -71,12 +73,7 @@ async function init() {
 }
 
 async function loadTokenizer() {
-  try {
-    return await AutoTokenizer.from_pretrained(REPO);
-  } catch {
-    env.remoteHost = MODEL_HOSTS[1];
-    return AutoTokenizer.from_pretrained(REPO);
-  }
+  return AutoTokenizer.from_pretrained(REPO);
 }
 
 /// Model bytes: OPFS first (persistent, on-device), else download with
