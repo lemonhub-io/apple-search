@@ -1,6 +1,10 @@
 // Result post-processing. The Rust engine is compiled to WebAssembly
 // (wasm-pack → public/engine) and loaded at runtime.
 
+import type { ApiResult } from "./api";
+
+export type { ApiResult };
+
 export interface Segment {
   text: string;
   mark: boolean;
@@ -15,16 +19,6 @@ export interface UiResult {
   date: string | null;
   snippet: Segment[];
   score: number;
-}
-
-export interface ApiResult {
-  id: string | null;
-  name: string | null;
-  url: string;
-  displayUrl: string | null;
-  snippet: string | null;
-  summary: string | null;
-  datePublished: string | null;
 }
 
 export interface Processed {

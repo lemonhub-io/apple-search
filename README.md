@@ -13,14 +13,35 @@ Browser ──► Cloudflare Worker ──► LangSearch API
    └── /api/search ─ JSON, edge-cached for 5 min
 
 Rust (crates/search-core) ──wasm-pack──► public/engine ──► runs in the browser:
-URL deduplication, per-host capping, blended ranking, term highlighting,
-relative-date labels.
+URL deduplication, per-host capping, intent-aware BM25 ranking, term
+highlighting, relative-date labels.
 ```
 
-- `src/App.tsx` — the interface (light/dark monochrome, keyboard: `/` focus, `Esc` clear)
-- `src/engine.ts` — loads the WebAssembly engine
-- `src/worker.ts` — Worker: `/api/search` → LangSearch, canonical cache keys
-- `crates/search-core` — the Rust engine compiled to WASM
+## Layout
+
+```
+src/
+  api.ts              — fetchSearch() + the shared /api/search response contract
+  engine.ts           — lazy-loads the WebAssembly engine
+  lib/platform.ts     — theme, standalone-mode, and deep-link helpers
+  hooks/              — useSearch, useTheme, useOnline, useInstallPrompt
+  components/         — Nav, SearchBox, Results, Skeleton, icons
+  worker/
+    index.ts          — router (GET /api/search → handleSearch, else assets)
+    search.ts         — validate → edge-cache → upstream → rescue → respond
+    langsearch.ts     — LangSearch API client
+    query.ts          — freshness inference + fallback-query simplification
+    http.ts, env.ts   — json() helper, bindings
+crates/search-core/src/
+  lib.rs              — wasm-bindgen API + pipeline orchestration
+  model.rs            — RawResult → Doc collection (dedupe, per-host cap)
+  rank.rs             — BM25 + provider prior + intent boosts
+  intent.rs           — navigate / learn / fresh / general classification
+  highlight.rs        — term → marked segments
+  text.rs, url.rs, date.rs — tokenize/truncate, URL forms, relative dates
+  examples/rerank.rs  — rank a real API dump locally:
+                        cargo run --example rerank "query" < results.json
+```
 
 ## Development
 
