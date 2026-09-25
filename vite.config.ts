@@ -1,6 +1,15 @@
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+
+// The AI worker loads ort wasm from /ort/<version>/ (see scripts/copy-ort.mjs).
+// exports map doesn't expose ./package.json — resolve the entry then walk up.
+const ortEntry = createRequire(import.meta.url).resolve("onnxruntime-web");
+const ortVersion: string = JSON.parse(
+  readFileSync(new URL("../package.json", `file://${ortEntry}`), "utf8"),
+).version;
 
 const icons = [
   { src: "pwa-192.png", sizes: "192x192", type: "image/png", purpose: "any" as const },
@@ -10,6 +19,9 @@ const icons = [
 ];
 
 export default defineConfig({
+  define: {
+    __ORT_VERSION__: JSON.stringify(ortVersion),
+  },
   plugins: [
     react(),
     VitePWA({
@@ -74,10 +86,13 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Keep the ~11 MB ort wasm out of precache — it is fetched lazily,
+        // only when the user enables AI ranking, and cached at runtime.
         globPatterns: ["**/*.{js,css,html,svg,png,webmanifest,wasm}"],
+        globIgnores: ["ort/**"],
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/^\/api\//],
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
@@ -92,6 +107,16 @@ export default defineConfig({
               cacheableResponse: { statuses: [200] },
             },
           },
+          {
+            // /ort/<version>/ is immutable by construction.
+            urlPattern: ({ url }) => url.pathname.startsWith("/ort/"),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "ort-runtime",
+              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
         ],
       },
       devOptions: {
@@ -102,5 +127,19 @@ export default defineConfig({
   build: {
     target: "es2022",
     sourcemap: false,
+    rollupOptions: {
+      plugins: [
+        {
+          // onnxruntime-web references WebGPU (jsep) wasm assets by URL; the
+          // wasm backend never touches them — drop the ~44 MB from the build.
+          name: "strip-ort-jsep",
+          generateBundle(_, bundle) {
+            for (const name of Object.keys(bundle)) {
+              if (name.includes("jsep")) delete bundle[name];
+            }
+          },
+        },
+      ],
+    },
   },
 });

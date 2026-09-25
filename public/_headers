@@ -1,6 +1,14 @@
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+  # Cross-origin isolation enables SharedArrayBuffer → WASM threads for the
+  # on-device AI reranker. `credentialless` keeps the cross-origin model
+  # download working; unsupported browsers fall back to single-thread SIMD.
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless
+
+/ort/*
+  Cache-Control: public, max-age=604800
 
 /sw.js
   Cache-Control: no-cache

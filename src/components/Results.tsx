@@ -29,6 +29,7 @@ export function Results({ meta, results, freshness, onFreshness }: Props) {
             ` · ${FRESHNESS.find((f) => f.id === meta.freshness)?.label.toLowerCase()}`}
           {meta.widened && " · widened to any time"}
           {meta.expanded && " · expanded query"}
+          {meta.ai && " · ai"}
         </span>
         <nav className="fresh" aria-label="Filter by date">
           {FRESHNESS.map((f) => (

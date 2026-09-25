@@ -29,12 +29,23 @@ pub fn clean_query(input: &str) -> String {
 /// Post-process raw LangSearch candidates: dedupe, classify intent,
 /// BM25 rerank with intent-conditioned boosts, highlight, format dates.
 /// `raw` is a JSON array of result objects; `now_ms` is the client's epoch ms.
+/// `rerank_scores` is an optional JSON array of cross-encoder logits aligned
+/// with `raw` by index (null = unscored) — produced by the on-device
+/// AI reranker when the user has enabled it.
 #[wasm_bindgen]
-pub fn process_results(query: &str, now_ms: f64, raw: &str) -> String {
+pub fn process_results(query: &str, now_ms: f64, raw: &str, rerank_scores: &str) -> String {
     let parsed = text::parse_query(query);
     let intent = intent::classify(&parsed.base);
     let raw_results: Vec<RawResult> = serde_json::from_str(raw).unwrap_or_default();
-    let docs = model::collect_docs(raw_results, &parsed);
+    let mut docs = model::collect_docs(raw_results, &parsed);
+
+    if !rerank_scores.is_empty() {
+        let scores: Vec<Option<f64>> =
+            serde_json::from_str(rerank_scores).unwrap_or_default();
+        for d in &mut docs {
+            d.rerank = scores.get(d.idx).copied().flatten();
+        }
+    }
 
     let scored = rank::score_all(docs, &parsed, intent, now_ms);
 
@@ -74,7 +85,7 @@ mod tests {
             {"url":"http://www.a.com/x","name":"A dup","snippet":"two"},
             {"url":"https://b.com/y","name":"B","snippet":"three"}
         ]"#;
-        let out = process_results("test", 1_760_000_000_000.0, raw);
+        let out = process_results("test", 1_760_000_000_000.0, raw, "");
         assert!(out.contains("\"B\""));
         assert!(!out.contains("A dup"));
     }
@@ -85,7 +96,7 @@ mod tests {
             {"url":"https://a.com/1","name":"Cloud stuff for workers","snippet":"cloud topics and worker topics"},
             {"url":"https://b.com/2","name":"Cloudflare Workers","snippet":"edge compute platform"}
         ]"#;
-        let out = process_results("cloudflare workers", 1_760_000_000_000.0, raw);
+        let out = process_results("cloudflare workers", 1_760_000_000_000.0, raw, "");
         let b_pos = out.find("b.com").unwrap();
         let a_pos = out.find("a.com").unwrap();
         assert!(b_pos < a_pos);
@@ -100,7 +111,7 @@ mod tests {
             {"url":"https://copy.example.net/post","name":"Cloudflare Workers explained","snippet":"cloudflare workers edge compute platform"},
             {"url":"https://workers.cloudflare.com/","name":"Cloudflare Workers","snippet":"edge compute platform"}
         ]"#;
-        let out = process_results("cloudflare workers", 1_760_000_000_000.0, raw);
+        let out = process_results("cloudflare workers", 1_760_000_000_000.0, raw, "");
         let primary = out.find("workers.cloudflare.com").unwrap();
         let archive = out.find("web.archive.org").unwrap();
         assert!(primary < archive);
@@ -115,7 +126,7 @@ mod tests {
             {"url":"https://github.com/orgs/github/discussions","name":"Discussions · GitHub","snippet":"github discussions community threads"},
             {"url":"https://github.com/","name":"GitHub · Build software better","snippet":"github is where people build software"}
         ]"#;
-        let out = process_results("github", 1_760_000_000_000.0, raw);
+        let out = process_results("github", 1_760_000_000_000.0, raw, "");
         let home = out.find("\"https://github.com/\"").unwrap();
         let pkgs = out.find("orgs/github/packages").unwrap();
         assert!(home < pkgs, "homepage should outrank the packages listing");
@@ -128,7 +139,7 @@ mod tests {
             {"url":"https://github.com/","name":"GitHub · Build software better","snippet":"github is where people build software"},
             {"url":"https://github.com/login","name":"Sign in to GitHub","snippet":"sign in to your github account"}
         ]"#;
-        let out = process_results("github login", 1_760_000_000_000.0, raw);
+        let out = process_results("github login", 1_760_000_000_000.0, raw, "");
         let login = out.find("github.com/login").unwrap();
         let home = out.find("\"https://github.com/\"").unwrap();
         assert!(login < home, "the login page should win for 'github login'");
@@ -141,10 +152,27 @@ mod tests {
             {"url":"https://best-rust-tutorial-2024.example.com/x","name":"Rust Tutorial | Learn Rust | Best Guide | Rust Examples | Top Tutorial","snippet":"Home | About | Links | Rust | More | Nav | Menu | Tags"},
             {"url":"https://doc.rust-lang.org/book/","name":"The Rust Programming Language","snippet":"The Rust Programming Language is an official guide that teaches you how to write Rust programs. It covers ownership, borrowing, and the type system in detail."}
         ]"#;
-        let out = process_results("rust tutorial", 1_760_000_000_000.0, raw);
+        let out = process_results("rust tutorial", 1_760_000_000_000.0, raw, "");
         let rustdoc = out.find("doc.rust-lang.org").unwrap();
         let seo = out.find("best-rust-tutorial-2024").unwrap();
         assert!(rustdoc < seo, "clean doc page should beat the SEO-stuffed page");
+    }
+
+    #[test]
+    fn rerank_scores_reorder() {
+        // A lexically weak but semantically right result should jump ahead
+        // once the on-device reranker's logit arrives.
+        let raw = r#"[
+            {"url":"https://a.com/x","name":"Github github github","snippet":"github github"},
+            {"url":"https://github.com/login","name":"Sign in","snippet":"account access"}
+        ]"#;
+        // First pass, no AI: a.com wins on term frequency.
+        let pass1 = process_results("github", 1_760_000_000_000.0, raw, "");
+        assert!(pass1.find("a.com").unwrap() < pass1.find("github.com").unwrap());
+        // With AI: github.com/login scores strongly relevant.
+        let scores = r#"[0.1, 4.0]"#;
+        let pass2 = process_results("github", 1_760_000_000_000.0, raw, scores);
+        assert!(pass2.find("github.com").unwrap() < pass2.find("a.com").unwrap());
     }
 
     #[test]
@@ -154,7 +182,7 @@ mod tests {
             {"url":"https://developer.mozilla.org/fr/docs/x","name":"Compiling Rust to WASM","snippet":"two"},
             {"url":"https://other.dev/","name":"Different page","snippet":"three"}
         ]"#;
-        let out = process_results("rust wasm", 1_760_000_000_000.0, raw);
+        let out = process_results("rust wasm", 1_760_000_000_000.0, raw, "");
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["results"].as_array().unwrap().len(), 2);
     }

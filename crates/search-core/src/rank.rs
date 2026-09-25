@@ -14,6 +14,7 @@ const B: f64 = 0.75;
 const TITLE_W: f64 = 2.6;
 const BODY_W: f64 = 1.0;
 const PRIOR_W: f64 = 0.30; // trust in the provider's own ordering
+const RERANK_W: f64 = 4.0; // on-device cross-encoder judgment — dominant signal
 
 // Hosts that republish other sites' content — snapshots, caches, mirrors.
 // A functional dedup category (republished copies, not editorial judgment).
@@ -58,7 +59,18 @@ pub fn score_all(
             + BODY_W * bm25(&d.body_terms, &parsed.terms, &df, avg_body, n);
         let prior = 1.0 / (1.0 + d.idx as f64 * 0.1);
         let boost = intent_boost(intent, parsed, &d, now_ms);
-        scored.push((d.idx, bm * (1.0 - PRIOR_W) + prior * PRIOR_W + boost, d));
+        // Cross-encoder logit → [-1,1] centered: positive judgments lift a
+        // result, negative ones actively bury it — the AI reranker is meant
+        // to dominate ordering when enabled, while structure still applies.
+        let rerank = d
+            .rerank
+            .map(|l| (1.0 / (1.0 + (-l).exp()) - 0.5) * 2.0)
+            .unwrap_or(0.0);
+        scored.push((
+            d.idx,
+            bm * (1.0 - PRIOR_W) + prior * PRIOR_W + boost + RERANK_W * rerank,
+            d,
+        ));
     }
     scored.sort_by(|a, b| {
         b.1.partial_cmp(&a.1)
@@ -278,6 +290,15 @@ fn quality_prior(d: &Doc) -> f64 {
 
     if title_stuffed(&d.title) {
         q -= 0.20;
+    }
+    // Same word repeated ≥3× in the title is repetition stuffing.
+    let mut word_freq: HashMap<&str, usize> = HashMap::new();
+    let title_lc = d.title.to_lowercase();
+    for w in title_lc.split_whitespace() {
+        *word_freq.entry(w).or_insert(0) += 1;
+    }
+    if word_freq.values().any(|&c| c >= 3) {
+        q -= 0.15;
     }
 
     // Prose coherence: real articles and docs are complete sentences;

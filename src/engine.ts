@@ -29,7 +29,7 @@ export interface Processed {
 
 interface WasmEngine {
   default: (input?: unknown) => Promise<unknown>;
-  process_results: (query: string, now_ms: number, raw_json: string) => string;
+  process_results: (query: string, now_ms: number, raw_json: string, rerank_scores: string) => string;
 }
 
 const ENGINE_URL = "/engine/search_core.js";
@@ -64,10 +64,18 @@ export function cleanQuery(input: string): string {
   return input.trim().replace(/\s+/g, " ").slice(0, 300);
 }
 
-export async function processResults(query: string, apiResults: ApiResult[]): Promise<Processed> {
+/// Process raw upstream results through the WASM engine. `rerankScores` is
+/// an optional array aligned to `apiResults` — cross-encoder logits from the
+/// AI worker (null for unscored entries); pass none for baseline ranking.
+export async function processResults(
+  query: string,
+  apiResults: ApiResult[],
+  rerankScores?: (number | null)[],
+): Promise<Processed> {
   const t0 = performance.now();
   const wasm = await loadEngine();
-  const out = wasm.process_results(query, Date.now(), JSON.stringify(apiResults));
+  const scoresJson = rerankScores?.length ? JSON.stringify(rerankScores) : "";
+  const out = wasm.process_results(query, Date.now(), JSON.stringify(apiResults), scoresJson);
   const parsed = JSON.parse(out) as { results: UiResult[]; intent: string };
   return { results: parsed.results, intent: parsed.intent ?? "general", ms: performance.now() - t0 };
 }
