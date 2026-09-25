@@ -19,8 +19,9 @@ export default function App() {
   const { input, setInput, phase, results, meta, error, freshness, inputRef, runSearch } =
     useSearch(online, reranker.rescore);
 
-  // First visit (no deep link): guided setup — PWA install, then the optional
-  // on-device AI model. Every step skippable; ?q= links jump straight in.
+  // First visit (no deep link): guided setup — PWA install, device check,
+  // then the optional on-device AI model. Every page skippable; ?q= links
+  // jump straight in.
   const [onboarded, setOnboarded] = useState(
     () => localStorage.getItem(ONBOARDED_KEY) === "1" || !!queryFromLocation(),
   );

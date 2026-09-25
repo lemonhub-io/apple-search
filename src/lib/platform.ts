@@ -33,3 +33,38 @@ export function queryFromLocation(): string | null {
   const params = new URLSearchParams(location.search);
   return params.get("q") || params.get("url");
 }
+
+export type DevicePlatform = "ios" | "android" | "macos" | "windows" | "linux";
+
+/// Best-effort OS detection, used to preselect install instructions — a
+/// display hint, never a gate. iPadOS reports as Macintosh, so touch is
+/// the tell.
+export function detectPlatform(): DevicePlatform {
+  const ua = navigator.userAgent;
+  if (/iphone|ipad|ipod/i.test(ua)) return "ios";
+  if (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1) return "ios";
+  if (/android/i.test(ua)) return "android";
+  if (/macintosh|mac os/i.test(ua)) return "macos";
+  if (/windows/i.test(ua)) return "windows";
+  return "linux";
+}
+
+export type BrowserName =
+  | "safari"
+  | "chrome"
+  | "edge"
+  | "firefox"
+  | "samsung"
+  | "other";
+
+/// UA-based browser detection — order matters: Edge, Samsung, and Chrome
+/// all contain "Chrome", Safari tokens only appear in real Safari.
+export function detectBrowser(): BrowserName {
+  const ua = navigator.userAgent;
+  if (/samsungbrowser/i.test(ua)) return "samsung";
+  if (/edg(a|ios)?\//i.test(ua)) return "edge";
+  if (/fxios|firefox/i.test(ua)) return "firefox";
+  if (/crios|chrome|chromium/i.test(ua)) return "chrome";
+  if (/safari/i.test(ua)) return "safari";
+  return "other";
+}

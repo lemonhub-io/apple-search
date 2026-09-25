@@ -505,20 +505,93 @@ mark {
   inset: 0;
   z-index: 30;
   display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 24px;
   background: var(--bg);
   overflow-y: auto;
 }
 
+/* Centered via auto margins — unlike justify/align-content, they collapse
+   to 0 when content exceeds the viewport, so tall pages scroll from the
+   top instead of clipping it. */
 .ob {
   width: 100%;
   max-width: 440px;
+  margin: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
+}
+
+.ob-top {
+  width: 100%;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.ob-top-spacer {
+  width: 1px;
+}
+
+.ob-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--fg3);
+  padding: 6px 10px;
+  margin: -6px -10px;
+  border-radius: 999px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.ob-nav:hover {
+  color: var(--fg);
+  background: var(--chip);
+}
+
+.ob-nav svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Each wizard page remounts under a new key — the slide direction follows
+   whether the user moved forward or back. */
+.ob-stage {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: ob-page-fwd 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ob-stage[data-dir="back"] {
+  animation-name: ob-page-back;
+}
+
+@keyframes ob-page-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ob-page-back {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .ob-mark {
@@ -528,8 +601,7 @@ mark {
   background: var(--chip);
   display: grid;
   place-items: center;
-  margin-bottom: 26px;
-  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  margin-bottom: 24px;
 }
 
 .ob-mark svg {
@@ -540,11 +612,10 @@ mark {
 
 .ob-head {
   margin: 0;
-  font-size: clamp(32px, 7vw, 42px);
+  font-size: clamp(30px, 6.5vw, 38px);
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.05;
-  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
 }
 
 .ob-sub {
@@ -552,13 +623,12 @@ mark {
   font-size: 15px;
   line-height: 1.5;
   color: var(--fg2);
-  max-width: 36ch;
-  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both;
+  max-width: 38ch;
 }
 
 .ob-items {
   width: 100%;
-  margin-top: 34px;
+  margin-top: 26px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -572,15 +642,6 @@ mark {
   padding: 15px 16px;
   border-radius: 16px;
   background: var(--chip);
-  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) calc(0.16s + var(--i, 0) * 60ms) both;
-}
-
-.ob-item:nth-child(1) {
-  --i: 0;
-}
-
-.ob-item:nth-child(2) {
-  --i: 1;
 }
 
 .ob-ico {
@@ -672,15 +733,214 @@ mark {
   color: var(--fg3);
 }
 
+/* ————— Onboarding: step chrome ————— */
+
+.ob-dots {
+  display: flex;
+  gap: 7px;
+  margin-top: 28px;
+}
+
+.ob-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.ob-dot.done {
+  background: var(--fg3);
+}
+
+.ob-dot.on {
+  background: var(--fg);
+}
+
+/* Hollow ring: the download step that a failed device check removed. */
+.ob-dot.off {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
 .ob-cta {
-  margin-top: 30px;
-  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+  margin-top: 20px;
+}
+
+.ob-cta:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ob-cta:disabled:active {
+  transform: none;
 }
 
 .ob-note {
   margin: 14px 0 0;
   font-size: 12.5px;
   color: var(--fg3);
+}
+
+/* ————— Onboarding: install guide ————— */
+
+.ob-guide {
+  width: 100%;
+  margin-top: 26px;
+  text-align: left;
+}
+
+.ob-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.ob-chip {
+  font-size: 12.5px;
+  padding: 6px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--fg2);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.ob-chip:hover {
+  color: var(--fg);
+  border-color: var(--fg3);
+}
+
+.ob-chip.on {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
+}
+
+.ob-guide-sec {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--chip);
+  margin-bottom: 10px;
+}
+
+.ob-guide-name {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg3);
+}
+
+.ob-steps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg2);
+}
+
+.ob-steps li::marker {
+  color: var(--fg3);
+}
+
+.ob-steps strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.ob-steps svg {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+}
+
+.ob-steps-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg2);
+}
+
+.ob-guide-note {
+  margin: 4px 4px 0;
+  font-size: 12.5px;
+  color: var(--fg3);
+}
+
+/* ————— Onboarding: device check ————— */
+
+.ob-panel {
+  width: 100%;
+  margin-top: 26px;
+  padding: 4px 16px;
+  border-radius: 16px;
+  background: var(--chip);
+  text-align: left;
+}
+
+.ob-check {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ob-check:last-child {
+  border-bottom: none;
+}
+
+.ob-check-ico {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--fg2);
+}
+
+.ob-check-ico svg {
+  width: 11px;
+  height: 11px;
+}
+
+.ob-check-ico.s-pass {
+  color: var(--fg);
+}
+
+.ob-check-ico.s-fail {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.ob-check-ico.s-unknown {
+  color: var(--fg3);
+}
+
+.ob-check-label {
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.ob-check-detail {
+  margin-left: auto;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--fg3);
+  text-align: right;
+  max-width: 58%;
+}
+
+.ob-check-sk {
+  height: 13px;
 }
 
 .btn {
