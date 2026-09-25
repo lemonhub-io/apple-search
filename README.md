@@ -48,5 +48,5 @@ Required repository secrets:
 | `LANGSEARCH_API_KEY` | [LangSearch dashboard](https://langsearch.com/dashboard) → API keys |
 
 The workflow also pushes `LANGSEARCH_API_KEY` into the Worker on each run, so
-rotating the secret is a re-run away. Deploys to
-`https://apple-search.<your-subdomain>.workers.dev`.
+rotating the secret is a re-run away. The Worker serves
+`https://asearch.world` (custom domain; `workers.dev` is disabled).

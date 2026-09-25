@@ -1,6 +1,11 @@
 name = "apple-search"
 main = "src/worker.ts"
 compatibility_date = "2025-09-20"
+workers_dev = false
+
+[[routes]]
+pattern = "asearch.world"
+custom_domain = true
 
 [assets]
 directory = "./dist"
