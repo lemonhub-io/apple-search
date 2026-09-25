@@ -523,77 +523,6 @@ mark {
   text-align: center;
 }
 
-.ob-top {
-  width: 100%;
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.ob-top-spacer {
-  width: 1px;
-}
-
-.ob-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--fg3);
-  padding: 6px 10px;
-  margin: -6px -10px;
-  border-radius: 999px;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.ob-nav:hover {
-  color: var(--fg);
-  background: var(--chip);
-}
-
-.ob-nav svg {
-  width: 13px;
-  height: 13px;
-}
-
-/* Each wizard page remounts under a new key — the slide direction follows
-   whether the user moved forward or back. */
-.ob-stage {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  animation: ob-page-fwd 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.ob-stage[data-dir="back"] {
-  animation-name: ob-page-back;
-}
-
-@keyframes ob-page-fwd {
-  from {
-    opacity: 0;
-    transform: translateX(18px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes ob-page-back {
-  from {
-    opacity: 0;
-    transform: translateX(-18px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
 .ob-mark {
   width: 64px;
   height: 64px;
@@ -602,6 +531,7 @@ mark {
   display: grid;
   place-items: center;
   margin-bottom: 24px;
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .ob-mark svg {
@@ -616,6 +546,7 @@ mark {
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.05;
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
 }
 
 .ob-sub {
@@ -624,6 +555,7 @@ mark {
   line-height: 1.5;
   color: var(--fg2);
   max-width: 38ch;
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both;
 }
 
 .ob-items {
@@ -642,6 +574,7 @@ mark {
   padding: 15px 16px;
   border-radius: 16px;
   background: var(--chip);
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.16s both;
 }
 
 .ob-ico {
@@ -700,80 +633,9 @@ mark {
   height: 14px;
 }
 
-.ob-hint {
-  font-size: 12.5px;
-  color: var(--fg3);
-  white-space: nowrap;
-}
-
-.ob-prog {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 3px;
-}
-
-.ob-prog-bar {
-  height: 3px;
-  border-radius: 2px;
-  background: var(--line);
-  overflow: hidden;
-}
-
-.ob-prog-fill {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
-  background: var(--fg);
-  transition: width 0.2s ease;
-}
-
-.ob-prog-text {
-  font-size: 12px;
-  color: var(--fg3);
-}
-
-/* ————— Onboarding: step chrome ————— */
-
-.ob-dots {
-  display: flex;
-  gap: 7px;
-  margin-top: 28px;
-}
-
-.ob-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--line);
-  transition: background 0.25s ease, box-shadow 0.25s ease;
-}
-
-.ob-dot.done {
-  background: var(--fg3);
-}
-
-.ob-dot.on {
-  background: var(--fg);
-}
-
-/* Hollow ring: the download step that a failed device check removed. */
-.ob-dot.off {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-
 .ob-cta {
-  margin-top: 20px;
-}
-
-.ob-cta:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.ob-cta:disabled:active {
-  transform: none;
+  margin-top: 30px;
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
 }
 
 .ob-note {
@@ -788,6 +650,7 @@ mark {
   width: 100%;
   margin-top: 26px;
   text-align: left;
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.16s both;
 }
 
 .ob-chips {
@@ -870,77 +733,6 @@ mark {
   margin: 4px 4px 0;
   font-size: 12.5px;
   color: var(--fg3);
-}
-
-/* ————— Onboarding: device check ————— */
-
-.ob-panel {
-  width: 100%;
-  margin-top: 26px;
-  padding: 4px 16px;
-  border-radius: 16px;
-  background: var(--chip);
-  text-align: left;
-}
-
-.ob-check {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.ob-check:last-child {
-  border-bottom: none;
-}
-
-.ob-check-ico {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--bg);
-  color: var(--fg2);
-}
-
-.ob-check-ico svg {
-  width: 11px;
-  height: 11px;
-}
-
-.ob-check-ico.s-pass {
-  color: var(--fg);
-}
-
-.ob-check-ico.s-fail {
-  background: var(--fg);
-  color: var(--bg);
-}
-
-.ob-check-ico.s-unknown {
-  color: var(--fg3);
-}
-
-.ob-check-label {
-  font-size: 13.5px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-
-.ob-check-detail {
-  margin-left: auto;
-  font-size: 12.5px;
-  line-height: 1.35;
-  color: var(--fg3);
-  text-align: right;
-  max-width: 58%;
-}
-
-.ob-check-sk {
-  height: 13px;
 }
 
 .btn {

@@ -6,7 +6,6 @@ import { SearchBox } from "./components/SearchBox";
 import { Skeleton } from "./components/Skeleton";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { useOnline } from "./hooks/useOnline";
-import { useReranker } from "./hooks/useReranker";
 import { useSearch } from "./hooks/useSearch";
 import { useTheme } from "./hooks/useTheme";
 import { ONBOARDED_KEY, queryFromLocation } from "./lib/platform";
@@ -15,13 +14,11 @@ export default function App() {
   const online = useOnline();
   const { theme, toggle } = useTheme();
   const { canInstall, installed, install } = useInstallPrompt();
-  const reranker = useReranker();
   const { input, setInput, phase, results, meta, error, freshness, inputRef, runSearch } =
-    useSearch(online, reranker.rescore);
+    useSearch(online);
 
-  // First visit (no deep link): guided setup — PWA install, device check,
-  // then the optional on-device AI model. Every page skippable; ?q= links
-  // jump straight in.
+  // First visit (no deep link): the PWA install guide. Skippable; ?q=
+  // links jump straight in.
   const [onboarded, setOnboarded] = useState(
     () => localStorage.getItem(ONBOARDED_KEY) === "1" || !!queryFromLocation(),
   );
@@ -72,7 +69,6 @@ export default function App() {
             canInstall={canInstall}
             installed={installed}
             onInstall={onInstall}
-            reranker={reranker}
             onDone={finishOnboarding}
           />
         )}

@@ -38,9 +38,6 @@ pub struct Doc {
     pub date_raw: Option<String>,
     pub title_terms: Vec<String>,
     pub body_terms: Vec<String>,
-    /// Optional cross-encoder relevance logit, aligned by `idx` with the
-    /// upstream result array. Injected by the caller (browser AI reranker).
-    pub rerank: Option<f64>,
 }
 
 /// Filter and normalize raw candidates into docs: drops entries without a
@@ -122,7 +119,6 @@ pub fn collect_docs(raw_results: Vec<RawResult>, parsed: &Parsed) -> Vec<Doc> {
                 .map(|d| text::truncate_chars(d.trim_end_matches('/'), DISPLAY_LIMIT))
                 .filter(|d| !d.is_empty()),
             date_raw: r.date_published,
-            rerank: None,
         });
     }
     docs

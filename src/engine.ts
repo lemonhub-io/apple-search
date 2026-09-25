@@ -29,7 +29,7 @@ export interface Processed {
 
 interface WasmEngine {
   default: (input?: unknown) => Promise<unknown>;
-  process_results: (query: string, now_ms: number, raw_json: string, rerank_scores: string) => string;
+  process_results: (query: string, now_ms: number, raw_json: string) => string;
 }
 
 const ENGINE_URL = "/engine/search_core.js";
@@ -46,8 +46,21 @@ function loadEngine(): Promise<WasmEngine> {
 
 async function importEngine(): Promise<WasmEngine> {
   try {
-    const mod = (await import(/* @vite-ignore */ ENGINE_URL)) as WasmEngine;
-    await mod.default();
+    // Dev servers refuse to import() modules straight out of /public — fetch
+    // the glue and import it as a blob module instead. Its wasm is passed by
+    // URL so the blob's import.meta.url never enters resolution.
+    const res = await fetch(ENGINE_URL);
+    if (!res.ok) throw new Error(String(res.status));
+    const blobUrl = URL.createObjectURL(new Blob([await res.text()], { type: "text/javascript" }));
+    let mod: WasmEngine;
+    try {
+      mod = (await import(/* @vite-ignore */ blobUrl)) as WasmEngine;
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
+    await mod.default({
+      module_or_path: new URL("/engine/search_core_bg.wasm", location.origin).href,
+    });
     return mod;
   } catch {
     throw new Error("Search engine is unavailable.");
@@ -64,18 +77,14 @@ export function cleanQuery(input: string): string {
   return input.trim().replace(/\s+/g, " ").slice(0, 300);
 }
 
-/// Process raw upstream results through the WASM engine. `rerankScores` is
-/// an optional array aligned to `apiResults` — cross-encoder logits from the
-/// AI worker (null for unscored entries); pass none for baseline ranking.
+/// Process raw upstream results through the WASM engine.
 export async function processResults(
   query: string,
   apiResults: ApiResult[],
-  rerankScores?: (number | null)[],
 ): Promise<Processed> {
   const t0 = performance.now();
   const wasm = await loadEngine();
-  const scoresJson = rerankScores?.length ? JSON.stringify(rerankScores) : "";
-  const out = wasm.process_results(query, Date.now(), JSON.stringify(apiResults), scoresJson);
+  const out = wasm.process_results(query, Date.now(), JSON.stringify(apiResults));
   const parsed = JSON.parse(out) as { results: UiResult[]; intent: string };
   return { results: parsed.results, intent: parsed.intent ?? "general", ms: performance.now() - t0 };
 }

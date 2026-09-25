@@ -31,7 +31,6 @@ export const Results = memo(function Results({ meta, results, freshness, onFresh
             ` · ${FRESHNESS.find((f) => f.id === meta.freshness)?.label.toLowerCase()}`}
           {meta.widened && " · widened to any time"}
           {meta.expanded && " · expanded query"}
-          {meta.ai && " · ai"}
         </span>
         <nav className="fresh" aria-label="Filter by date">
           {FRESHNESS.map((f) => (
@@ -51,7 +50,7 @@ export const Results = memo(function Results({ meta, results, freshness, onFresh
       ) : (
         <ol className="rlist">
           {results.map((r, i) => (
-            // Key by id, not index: an AI rerank reorders the same items —
+            // Key by id, not index: a re-search can reorder the same items —
             // keyed-by-id they move without remounting (no animation replay).
             <ResultItem key={r.id} result={r} index={i} />
           ))}

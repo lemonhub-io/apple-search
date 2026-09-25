@@ -4,7 +4,6 @@ export type Theme = "light" | "dark";
 
 export const THEME_KEY = "search-theme";
 export const ONBOARDED_KEY = "onboarded";
-export const AI_RERANK_KEY = "ai-rerank";
 
 export interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;

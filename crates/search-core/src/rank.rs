@@ -14,7 +14,6 @@ const B: f64 = 0.75;
 const TITLE_W: f64 = 2.6;
 const BODY_W: f64 = 1.0;
 const PRIOR_W: f64 = 0.30; // trust in the provider's own ordering
-const RERANK_W: f64 = 4.0; // on-device cross-encoder judgment — dominant signal
 
 // Hosts that republish other sites' content — snapshots, caches, mirrors.
 // A functional dedup category (republished copies, not editorial judgment).
@@ -62,17 +61,7 @@ pub fn score_all(
                 + BODY_W * bm25(&d.body_terms, &parsed.terms, &df, avg_body, n);
             let prior = 1.0 / (1.0 + d.idx as f64 * 0.1);
             let boost = intent_boost(intent, parsed, d, now_ms);
-            // Cross-encoder logit → [-1,1] centered: positive judgments lift a
-            // result, negative ones actively bury it — the AI reranker is meant
-            // to dominate ordering when enabled, while structure still applies.
-            let rerank = d
-                .rerank
-                .map(|l| (1.0 / (1.0 + (-l).exp()) - 0.5) * 2.0)
-                .unwrap_or(0.0);
-            scores.push((
-                d.idx,
-                bm * (1.0 - PRIOR_W) + prior * PRIOR_W + boost + RERANK_W * rerank,
-            ));
+            scores.push((d.idx, bm * (1.0 - PRIOR_W) + prior * PRIOR_W + boost));
         }
     }
     let mut scored: Vec<(usize, f64, Doc)> = scores

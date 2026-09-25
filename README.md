@@ -35,16 +35,6 @@ the [LangSearch](https://langsearch.com) Web Search API.
   query and fans out a simplified fallback query when the upstream index
   returns too few candidates; transient upstream failures get one bounded
   jittered retry.
-- **On-device AI reranking (opt-in)** — first-run onboarding offers a
-  ~280 MB cross-encoder model (jina-reranker-v2-base-multilingual, int8
-  ONNX). It downloads once from our own R2 bucket behind
-  `models.asearch.world` (no HuggingFace runtime dependency — the supply
-  chain is pinned to artifacts we control), persists in OPFS, and runs in
-  a dedicated Web Worker on ONNX Runtime Web — WASM with SIMD, plus
-  threads when the deployment enables cross-origin isolation (COOP/COEP).
-  Results render on structural ranking instantly, then re-sort when the
-  model's relevance logits arrive; if the model is skipped, unsupported,
-  or fails, nothing breaks — the meta line just never shows "ai".
 - **Edge-cached** — identical searches share a canonical cache entry at
   the Cloudflare edge for 5 minutes.
 - **Installable PWA** — service worker precaches the app shell and the
@@ -58,18 +48,11 @@ the [LangSearch](https://langsearch.com) Web Search API.
 ```
 Browser ──► Cloudflare Worker ──► LangSearch API
    │              │
-   │              ├── asearch.world: /api/search + static SPA (edge-cached 5 min)
-   │              └── models.asearch.world: download worker → R2 bucket
-   │                  (model weights + tokenizer, HF-style keys, CORS, Range)
+   │              └── asearch.world: /api/search + static SPA (edge-cached 5 min)
 
 Rust (crates/search-core) ──wasm-pack──► public/engine ──► runs in the browser:
 URL deduplication, per-host capping, intent-aware BM25 ranking, term
 highlighting, relative-date labels.
-
-Optional AI pass (src/ai/): jina-reranker-v2 (ONNX int8) in a Web Worker —
-OPFS persistence, ort wasm (SIMD + threads under cross-origin isolation)
-served from /ort/<version>/. Its logits feed back into process_results()
-as a centered sigmoid signal on top of the structural score.
 ```
 
 ## Layout
@@ -79,18 +62,14 @@ src/
   api.ts              — fetchSearch() + the shared /api/search response contract
   engine.ts           — lazy-loads the WebAssembly engine
   lib/platform.ts     — theme, standalone-mode, and deep-link helpers
-  ai/
-    worker.ts         — model download → OPFS → ort session → cross-encoder scoring
-    reranker.ts       — main-thread client for the worker protocol
-  hooks/              — useSearch, useReranker, useTheme, useOnline, useInstallPrompt
-  components/         — Nav, SearchBox, Results, Onboarding, Skeleton, icons
+  hooks/              — useSearch, useTheme, useOnline, useInstallPrompt
+  components/         — Nav, SearchBox, Results, Onboarding, InstallGuide, Skeleton, icons
   worker/
     index.ts          — router (GET /api/search → handleSearch, else assets)
     search.ts         — validate → edge-cache → upstream → rescue → respond
     langsearch.ts     — LangSearch API client
     query.ts          — freshness inference + fallback-query simplification
     http.ts, env.ts   — json() helper, bindings
-  models/index.ts     — models.asearch.world download worker (R2, CORS, Range)
 crates/search-core/src/
   lib.rs              — wasm-bindgen API + pipeline orchestration
   model.rs            — RawResult → Doc collection (dedupe, per-host cap)
@@ -160,19 +139,8 @@ Required repository secrets:
 | `LANGSEARCH_API_KEY` | [LangSearch dashboard](https://langsearch.com/dashboard) → API keys |
 
 The workflow also pushes `LANGSEARCH_API_KEY` into the Worker on each run,
-so rotating the secret is a re-run away. Two workers deploy per run —
-`asearch.world` (app) and `models.asearch.world` (model downloads from the
-`apple-search-models` R2 bucket; `wrangler.models.toml`). Both are custom
-domains; `workers.dev` is disabled.
-
-Model artifacts are uploaded to R2 **once**, not in CI:
-
-```bash
-P=jinaai/jina-reranker-v2-base-multilingual/resolve/main
-wrangler r2 object put apple-search-models/$P/onnx/model_quantized.onnx \
-  --file=model_quantized.onnx --content-type application/octet-stream --remote
-# plus config.json, tokenizer_config.json, tokenizer.json, special_tokens_map.json
-```
+so rotating the secret is a re-run away. The worker serves `asearch.world`
+as a custom domain; `workers.dev` is disabled.
 
 ## Contributing
 

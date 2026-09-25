@@ -12,9 +12,6 @@ crates/search-core/pkg
 crates/search-core/Cargo.lock
 public/engine
 
-# ONNX Runtime Web artifacts (copied at build time)
-public/ort
-
 # Playwright CLI local config + artifacts
 .playwright/
 .playwright-cli/

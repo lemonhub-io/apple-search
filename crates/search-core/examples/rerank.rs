@@ -12,7 +12,7 @@ fn main() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as f64;
-    let out = search_core::process_results(&query, now, &pages.to_string(), "");
+    let out = search_core::process_results(&query, now, &pages.to_string());
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
     println!("intent: {}", parsed["intent"]);
     for r in parsed["results"].as_array().unwrap() {

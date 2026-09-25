@@ -8,15 +8,13 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "node scripts/copy-ort.mjs && vite",
-    "build": "node scripts/copy-ort.mjs && tsc --noEmit && vite build",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "wasm": "wasm-pack build crates/search-core --target web --release --out-dir ../../public/engine",
     "deploy": "npm run wasm && npm run build && wrangler deploy"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.8.1",
-    "onnxruntime-web": "^1.22.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

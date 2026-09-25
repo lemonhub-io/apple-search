@@ -14,16 +14,7 @@ export interface SearchMeta {
   widened: boolean;
   expanded: boolean;
   query: string;
-  ai: boolean;
 }
-
-const AI_TOP_N = 12; // cross-encoder scores the stage-1 top results only
-
-export type Rescore = (
-  query: string,
-  candidates: { url: string; name: string | null; snippet: string | null }[],
-  topUrls: string[],
-) => Promise<(number | null)[] | null>;
 
 export interface SearchState {
   input: string;
@@ -39,9 +30,7 @@ export interface SearchState {
 
 /// Search state machine: input, request lifecycle, deep links, history
 /// navigation, and retry-on-reconnect for searches that ran while offline.
-/// `rescore` is the optional AI pass: results render on structural ranking
-/// first, then re-sort when cross-encoder scores land.
-export function useSearch(online: boolean, rescore?: Rescore): SearchState {
+export function useSearch(online: boolean): SearchState {
   const [input, setInput] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [results, setResults] = useState<UiResult[]>([]);
@@ -98,29 +87,8 @@ export function useSearch(online: boolean, rescore?: Rescore): SearchState {
         // The raw query — not data.query (the operator-stripped upstream
         // form): re-running it must preserve site:/-term/"phrase" semantics.
         query: q,
-        ai: false,
       });
       setPhase("done");
-
-      // Phase 2 — AI rerank: score the stage-1 top set in the worker, then
-      // re-run the engine with the logits blended in. Silently skipped when
-      // the model isn't installed/ready; stale searches never overwrite.
-      if (rescore && processed.results.length) {
-        const raw = data.results ?? [];
-        void rescore(
-          q,
-          raw.map((r) => ({ url: r.url, name: r.name, snippet: r.snippet })),
-          processed.results.slice(0, AI_TOP_N).map((r) => r.url),
-        )
-          .then(async (scores) => {
-            if (!scores || my !== seq.current) return;
-            const reranked = await processResults(q, raw, scores);
-            if (my !== seq.current) return;
-            setResults(reranked.results);
-            setMeta((m) => (m && my === seq.current ? { ...m, ai: true } : m));
-          })
-          .catch(() => {});
-      }
     } catch (e) {
       if (my !== seq.current) return;
       if (!navigator.onLine) pendingRetry.current = q;
