@@ -3,6 +3,10 @@
 export const FRESHNESS = new Set(["noLimit", "oneDay", "oneWeek", "oneMonth", "oneYear"]);
 
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/;
+// Operators the engine applies locally. Their operands still aid upstream
+// recall ("wasm inurl:tutorial" → "wasm tutorial"), but the `op:` token
+// itself is harmful — the index would treat it as literal text.
+const OP_RE = /^(inurl|intitle|after|before):(\S{2,})$/;
 
 export interface ParsedQuery {
   /** Query sent to LangSearch: operators removed, quotes unwrapped. */
@@ -17,6 +21,7 @@ export interface ParsedQuery {
 ///   -site:example.com  → excludeDomains
 ///   "exact phrase"     → unwrapped (the engine re-adds phrase weighting)
 ///   -term              → stripped upstream; the engine excludes locally
+///   inurl:/intitle:/after:/before: → stripped upstream; engine filters locally
 ///
 /// The upstream index treats operator syntax as literal text, so removing it
 /// improves recall while the engine enforces the semantics client-side.
@@ -48,7 +53,11 @@ export function parseQuery(raw: string): ParsedQuery {
       } else if (neg && bare.length > 0) {
         continue; // -term: engine excludes these docs locally
       } else {
-        terms.push(tok);
+        // inurl:/intitle:/after:/before: — the engine filters locally;
+        // upstream gets just the operand, which biases recall toward the
+        // field/date constraint.
+        const op = bare.match(OP_RE);
+        terms.push(op ? op[2] : tok);
       }
     }
   }

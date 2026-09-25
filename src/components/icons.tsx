@@ -74,6 +74,21 @@ export function CheckIcon() {
   );
 }
 
+export function BadgeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden>
+      <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M5.3 8.1l1.9 1.9 3.6-3.8"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function ShareIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" aria-hidden>

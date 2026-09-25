@@ -18,6 +18,8 @@ export interface UiResult {
   host: string;
   date: string | null;
   snippet: Segment[];
+  /** Trust cue from the engine: entity's own host or institutional namespace. */
+  cred?: "official" | "vetted";
   score: number;
 }
 

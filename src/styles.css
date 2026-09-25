@@ -474,6 +474,29 @@ mark {
   color: var(--fg3);
 }
 
+/* Credibility cue — official entity host or institutional namespace. */
+.r-cred {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg2);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.r-cred::before {
+  content: "·";
+  margin-right: 4px;
+  color: var(--fg3);
+}
+
+.r-cred svg {
+  width: 12px;
+  height: 12px;
+}
+
 .r-title {
   display: inline-block;
   font-size: 20px;

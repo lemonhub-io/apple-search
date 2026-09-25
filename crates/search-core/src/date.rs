@@ -16,6 +16,13 @@ pub fn age_days(now_ms: f64, date: &str) -> Option<i64> {
     Some((now_ms / 86_400_000.0).floor() as i64 - days_from_civil(y, m, d))
 }
 
+/// Normalized "YYYY-MM-DD" for a parseable date — the form date operators
+/// compare against.
+pub fn ymd_string(date: &str) -> Option<String> {
+    let (y, m, d) = parse_ymd(date)?;
+    Some(format!("{y:04}-{m:02}-{d:02}"))
+}
+
 /// Display label: relative for the past week, absolute ("Sep 14" /
 /// "Sep 14, 2025") beyond it.
 pub fn label(now_ms: f64, date: &str) -> Option<String> {

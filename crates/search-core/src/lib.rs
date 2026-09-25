@@ -53,6 +53,13 @@ pub fn process_results(query: &str, now_ms: f64, raw: &str) -> String {
                 &parsed.terms,
             ),
             date: d.date_raw.as_deref().and_then(|v| date::label(now_ms, v)),
+            cred: if rank::host_carries_term(&d.host, &parsed) {
+                Some("official")
+            } else if rank::vetted_namespace(&d.host) {
+                Some("vetted")
+            } else {
+                None
+            },
             host: d.host,
             url: d.url,
             score,
@@ -157,5 +164,82 @@ mod tests {
         let out = process_results("rust wasm", 1_760_000_000_000.0, raw);
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["results"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn field_operators_filter() {
+        // inurl:/intitle: are hard filters — non-matching docs drop out.
+        let raw = r#"[
+            {"url":"https://a.com/docs/wasm-guide","name":"WASM Guide","snippet":"webassembly guide"},
+            {"url":"https://b.com/other/page","name":"WASM Guide","snippet":"webassembly guide"},
+            {"url":"https://c.com/docs/wasm-guide","name":"Totally Different","snippet":"webassembly guide"}
+        ]"#;
+        let out = process_results("wasm inurl:guide intitle:wasm", 1_760_000_000_000.0, raw);
+        assert!(out.contains("a.com"));
+        assert!(!out.contains("b.com"), "inurl:guide should drop b.com");
+        assert!(!out.contains("c.com"), "intitle:wasm should drop c.com");
+    }
+
+    #[test]
+    fn date_operators_filter_and_penalize_undated() {
+        let raw = r#"[
+            {"url":"https://a.com/old","name":"Rust WASM","snippet":"compiling rust to wasm targets","datePublished":"2020-01-15"},
+            {"url":"https://b.com/new","name":"Rust WASM","snippet":"compiling rust to wasm targets","datePublished":"2025-06-01"},
+            {"url":"https://c.com/undated","name":"Rust WASM","snippet":"compiling rust to wasm targets"}
+        ]"#;
+        let out = process_results("rust wasm after:2024", 1_760_000_000_000.0, raw);
+        assert!(!out.contains("a.com"), "2020 doc should be dropped by after:2024");
+        let b_pos = out.find("b.com").unwrap();
+        let c_pos = out.find("c.com").unwrap();
+        assert!(b_pos < c_pos, "dated doc should outrank the undated one under after:");
+    }
+
+    #[test]
+    fn clickbait_and_blocked_pages_lose() {
+        let raw = r#"[
+            {"url":"https://spam.example.com/x","name":"BEST FREE Rust WASM Tutorial EVER!!!","snippet":"Click here NOW for the best rust wasm tips!!"},
+            {"url":"https://walled.example.net/y","name":"Rust WASM Guide","snippet":"Please enable JavaScript to view this page. Checking your browser before access."},
+            {"url":"https://good.example.org/z","name":"Rust WASM Tutorial — A Complete Guide","snippet":"A complete walkthrough of compiling Rust to WebAssembly targets, covering wasm-bindgen and the wasm32 toolchain in detail."}
+        ]"#;
+        let out = process_results("rust wasm tutorial", 1_760_000_000_000.0, raw);
+        let good = out.find("good.example.org").unwrap();
+        let spam = out.find("spam.example.com").unwrap();
+        let walled = out.find("walled.example.net").unwrap();
+        assert!(good < spam && good < walled, "clean page should beat clickbait and block pages");
+    }
+
+    #[test]
+    fn cred_flags_mark_trusted_sources() {
+        let raw = r#"[
+            {"url":"https://blog.example.net/1","name":"GitHub blog post","snippet":"writing about github features"},
+            {"url":"https://github.com/","name":"GitHub","snippet":"github is where people build software"},
+            {"url":"https://nasa.gov/space","name":"NASA on collaboration","snippet":"github used for mission software"},
+            {"url":"https://alice.github.io/gh","name":"My github notes","snippet":"things I learned about github"},
+            {"url":"https://best-github-hacks-2026.example.com/x","name":"GitHub hacks","snippet":"github tricks and tips"}
+        ]"#;
+        let out = process_results("github", 1_760_000_000_000.0, raw);
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let results = v["results"].as_array().unwrap();
+        let find = |host: &str| results.iter().find(|r| r["host"] == host).unwrap();
+        assert_eq!(find("github.com")["cred"], "official");
+        assert_eq!(find("nasa.gov")["cred"], "vetted");
+        // "github" inside a hyphen-chain or a user-space subdomain is not
+        // the entity's own host — a badge must never overclaim.
+        assert!(find("blog.example.net")["cred"].is_null());
+        assert!(find("alice.github.io")["cred"].is_null());
+        assert!(find("best-github-hacks-2026.example.com")["cred"].is_null());
+    }
+
+    #[test]
+    fn adjacent_terms_outrank_scattered() {
+        // "memory safety" adjacent beats "memory" and "safety" far apart.
+        let raw = r#"[
+            {"url":"https://a.com/1","name":"Memory layout tips","snippet":"memory layout. Forty lines of unrelated detail. The safety checklist follows much later."},
+            {"url":"https://b.com/2","name":"Memory safety in Rust","snippet":"memory safety without garbage collection"}
+        ]"#;
+        let out = process_results("rust memory safety", 1_760_000_000_000.0, raw);
+        let b_pos = out.find("b.com").unwrap();
+        let a_pos = out.find("a.com").unwrap();
+        assert!(b_pos < a_pos, "adjacent terms should outrank scattered ones");
     }
 }

@@ -47,6 +47,10 @@ pub fn truncate_chars(s: &str, max: usize) -> String {
 ///   -site:example.com  → exclude_hosts
 ///   "exact phrase"     → phrases (exact-containment boost)
 ///   -term              → excluded (docs containing it are dropped)
+///   inurl:term         → in_url (URL must contain it)
+///   intitle:term       → in_title (title must contain it)
+///   after:YYYY[-MM[-DD]] → date_after (docs dated earlier are dropped)
+///   before:YYYY[-MM[-DD]] → date_before
 pub struct Parsed {
     /// Query text with operators stripped — input for intent classify and
     /// the whole-query phrase bonus.
@@ -57,6 +61,33 @@ pub struct Parsed {
     pub excluded: Vec<String>,
     pub include_hosts: Vec<String>,
     pub exclude_hosts: Vec<String>,
+    pub in_url: Vec<String>,
+    pub in_title: Vec<String>,
+    /// ISO-ish date bound ("2024", "2024-06", "2024-06-01") — compared
+    /// lexicographically against `datePublished`, so a year prefix matches
+    /// any date inside that year.
+    pub date_after: Option<String>,
+    pub date_before: Option<String>,
+}
+
+/// Validate and normalize a `after:`/`before:` operand: YYYY, YYYY-MM, or
+/// YYYY-MM-DD. Returns the operand unchanged when it matches.
+fn date_bound(s: &str) -> Option<String> {
+    let ok_len = matches!(s.len(), 4 | 7 | 10);
+    let ok_shape = s
+        .split('-')
+        .enumerate()
+        .all(|(i, p)| p.chars().all(|c| c.is_ascii_digit()) && p.len() == [4, 2, 2][i]);
+    if !ok_len || !ok_shape || s.split('-').count() > 3 {
+        return None;
+    }
+    Some(s.to_string())
+}
+
+/// Validate an `inurl:`/`intitle:` operand: a word-ish token.
+fn field_term(s: &str) -> Option<String> {
+    let t = s.trim_matches(|c: char| !c.is_alphanumeric());
+    (t.chars().count() >= 2).then(|| t.to_string())
 }
 
 /// Parse the raw user query into terms + operators. The worker strips the
@@ -67,6 +98,10 @@ pub fn parse_query(raw: &str) -> Parsed {
     let mut excluded: Vec<String> = Vec::new();
     let mut include_hosts: Vec<String> = Vec::new();
     let mut exclude_hosts: Vec<String> = Vec::new();
+    let mut in_url: Vec<String> = Vec::new();
+    let mut in_title: Vec<String> = Vec::new();
+    let mut date_after: Option<String> = None;
+    let mut date_before: Option<String> = None;
     let mut base_parts: Vec<&str> = Vec::new();
 
     let chunks: Vec<&str> = raw.split('"').collect();
@@ -101,6 +136,24 @@ pub fn parse_query(raw: &str) -> Parsed {
                     continue;
                 }
             }
+            if !neg {
+                if let Some(v) = bare_l.strip_prefix("inurl:").and_then(field_term) {
+                    in_url.push(v);
+                    continue;
+                }
+                if let Some(v) = bare_l.strip_prefix("intitle:").and_then(field_term) {
+                    in_title.push(v);
+                    continue;
+                }
+                if let Some(v) = bare_l.strip_prefix("after:").and_then(date_bound) {
+                    date_after = Some(v);
+                    continue;
+                }
+                if let Some(v) = bare_l.strip_prefix("before:").and_then(date_bound) {
+                    date_before = Some(v);
+                    continue;
+                }
+            }
             if neg {
                 let t = bare_l.trim_matches(|c: char| !c.is_alphanumeric()).to_string();
                 if t.chars().count() >= 2 {
@@ -120,6 +173,10 @@ pub fn parse_query(raw: &str) -> Parsed {
         excluded,
         include_hosts,
         exclude_hosts,
+        in_url,
+        in_title,
+        date_after,
+        date_before,
     }
 }
 
@@ -138,6 +195,23 @@ mod tests {
         assert!(p.terms.contains(&"rust".to_string()));
         assert!(!p.terms.contains(&"site".to_string()));
         assert!(!p.terms.contains(&"github".to_string()));
+    }
+
+    #[test]
+    fn parses_field_and_date_ops() {
+        let p = parse_query("wasm inurl:tutorial intitle:rust after:2024 before:2025-06");
+        assert_eq!(p.base, "wasm");
+        assert_eq!(p.in_url, vec!["tutorial"]);
+        assert_eq!(p.in_title, vec!["rust"]);
+        assert_eq!(p.date_after.as_deref(), Some("2024"));
+        assert_eq!(p.date_before.as_deref(), Some("2025-06"));
+        // Invalid operands fall through to plain text.
+        let p = parse_query("after:tomorrow inurl:x");
+        assert_eq!(p.base, "after:tomorrow inurl:x");
+        assert!(p.date_after.is_none() && p.in_url.is_empty());
+        // Negated field ops are not supported — "-inurl:x" is a plain -term.
+        let p = parse_query("rust -inurl:blog");
+        assert_eq!(p.excluded, vec!["inurl:blog"]);
     }
 
     #[test]

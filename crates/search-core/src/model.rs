@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+use crate::date;
 use crate::highlight::Segment;
 use crate::text::{self, Parsed};
 use crate::url;
@@ -36,6 +37,9 @@ pub struct Doc {
     pub host: String,
     pub display: Option<String>,
     pub date_raw: Option<String>,
+    /// Normalized "YYYY-MM-DD" when `date_raw` parses — operators and
+    /// freshness signals compare against this, not the raw string.
+    pub date_ymd: Option<String>,
     pub title_terms: Vec<String>,
     pub body_terms: Vec<String>,
 }
@@ -67,6 +71,27 @@ pub fn collect_docs(raw_results: Vec<RawResult>, parsed: &Parsed) -> Vec<Doc> {
             continue;
         }
 
+        // inurl: — URL must carry every listed term.
+        let url_l = url_str.to_lowercase();
+        if !parsed.in_url.iter().all(|t| url_l.contains(t.as_str())) {
+            continue;
+        }
+
+        let date_ymd = r.date_published.as_deref().and_then(date::ymd_string);
+        // after:/before: — docs with a date violating a bound are out;
+        // undated docs pass but take a ranking penalty (a date operator
+        // can't prove they qualify).
+        if let Some(a) = &parsed.date_after {
+            if date_ymd.as_deref().is_some_and(|d| d < a.as_str()) {
+                continue;
+            }
+        }
+        if let Some(b) = &parsed.date_before {
+            if date_ymd.as_deref().is_some_and(|d| d >= b.as_str()) {
+                continue;
+            }
+        }
+
         if !seen.insert(url::dedupe_key(&url_str)) {
             continue;
         }
@@ -79,8 +104,14 @@ pub fn collect_docs(raw_results: Vec<RawResult>, parsed: &Parsed) -> Vec<Doc> {
             .unwrap_or(&host)
             .to_string();
 
+        // intitle: — title must carry every listed term.
+        let title_l = title.to_lowercase();
+        if !parsed.in_title.iter().all(|t| title_l.contains(t.as_str())) {
+            continue;
+        }
+
         // Same host + same title almost always means a locale/AMP duplicate.
-        if !seen_titles.insert((host.clone(), title.to_lowercase())) {
+        if !seen_titles.insert((host.clone(), title_l)) {
             continue;
         }
 
@@ -113,6 +144,7 @@ pub fn collect_docs(raw_results: Vec<RawResult>, parsed: &Parsed) -> Vec<Doc> {
             body,
             url: url_str,
             host,
+            date_ymd,
             display: r
                 .display_url
                 .as_deref()
@@ -134,6 +166,10 @@ pub struct UiResult {
     pub host: String,
     pub date: Option<String>,
     pub snippet: Vec<Segment>,
+    /// Trust cue: `"official"` = the queried entity's own host,
+    /// `"vetted"` = a restricted-registration (institutional) namespace.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cred: Option<&'static str>,
     pub score: f64,
 }
 

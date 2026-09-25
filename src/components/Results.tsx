@@ -1,6 +1,7 @@
 import { memo, type CSSProperties } from "react";
 import type { UiResult } from "../engine";
 import type { SearchMeta } from "../hooks/useSearch";
+import { BadgeIcon } from "./icons";
 
 const FRESHNESS = [
   { id: "auto", label: "Auto" },
@@ -69,6 +70,15 @@ const ResultItem = memo(function ResultItem({ result: r, index }: { result: UiRe
         </span>
         <span className="r-crumb">
           <span className="r-display">{r.display}</span>
+          {r.cred && (
+            <span
+              className="r-cred"
+              title={r.cred === "official" ? "The entity's own site" : "Institutional domain"}
+            >
+              <BadgeIcon />
+              {r.cred === "official" ? "Official" : "Institution"}
+            </span>
+          )}
           {r.date && <span className="r-date">{r.date}</span>}
         </span>
       </div>

@@ -12,25 +12,33 @@ the [LangSearch](https://langsearch.com) Web Search API.
 
 - **Intent-aware ranking** — queries are classified (navigate / learn /
   fresh / general; a bare single-token query counts as navigational) and
-  rescored client-side with BM25, phrase matching, a provider-order prior,
-  and intent-conditioned boosts. Navigational queries get structural
-  destination signals: entity-in-domain matching at label granularity,
-  modifier-in-path (`github login` → `github.com/login`), canonical
-  shallow-path preference, and demotion of deep listing pages and
+  rescored client-side with BM25, phrase matching, term-adjacency bigrams,
+  a provider-order prior, and intent-conditioned boosts. Navigational
+  queries get structural destination signals: entity-in-domain matching at
+  label granularity, modifier-in-path (`github login` → `github.com/login`),
+  canonical shallow-path preference, and demotion of deep listing pages and
   parameter-bloated URLs.
 - **Structural quality prior** — no domain whitelists: spam reveals itself
-  through hyphen-chained/digit-spiked domains, punycode, keyword-stuffed
-  titles (which also lose BM25 weight), thin or fragment-soup extracts, and
-  compounding signals; restricted namespaces (.edu/.gov/.mil) get credit.
+  through hyphen-chained/digit-spiked domains, punycode, keyword-stuffed or
+  clickbait titles (which also lose BM25 weight), thin or fragment-soup
+  extracts, block-page/consent-wall boilerplate, plain-HTTP transport,
+  far-future dates, and compounding signals; restricted namespaces
+  (.edu/.gov/.mil/.int and institutional SLDs like .ac.uk/.gov.cn/.go.jp)
+  get credit, and documents sharing no query term at all are demoted.
+- **Trust cues** — results from the entity's own host are badged
+  "Official", results inside restricted-registration namespaces are badged
+  "Institution".
 - **Readable snippets** — instead of raw DOM text, the engine scores each
   sentence by query-term coverage and returns the best passage extended
   forward, skipping navigation chrome like "Pinned Discussions".
 - **Honest dates** — upstream `datePublished` is often stale crawl
   metadata, so labels are relative only inside a week ("Today",
   "3 days ago") and absolute ("Sep 14") beyond it — no fake precision.
-- **Search operators** — `site:example.com` / `-site:example.com` map to
-  LangSearch `includeDomains`/`excludeDomains`; `"exact phrase"` boosts
-  verbatim containment; `-term` drops matching documents.
+- **Search operators** — `site:`/`-site:` map to LangSearch
+  `includeDomains`/`excludeDomains`; `"exact phrase"` boosts verbatim
+  containment; `-term` drops matching documents; `inurl:`/`intitle:` are
+  local field filters; `after:`/`before:` bound `datePublished`
+  (undated results are kept but demoted).
 - **Query rescue** — the Worker widens freshness windows that starve a
   query and fans out a simplified fallback query when the upstream index
   returns too few candidates; transient upstream failures get one bounded
@@ -106,6 +114,10 @@ status. `x-cache: HIT|MISS` marks edge-cache hits.
 | `-site:` | `rust -site:reddit.com` | Exclude a domain |
 | `"…"` | `"edge compute platform"` | Exact-phrase boost |
 | `-` | `rust -game` | Drop documents containing the term |
+| `inurl:` | `wasm inurl:tutorial` | URL must contain the term |
+| `intitle:` | `wasm intitle:guide` | Title must contain the term |
+| `after:` | `rust wasm after:2024` | Only docs dated `YYYY[-MM[-DD]]` or later |
+| `before:` | `rust wasm before:2023-06` | Only docs dated earlier than the bound |
 
 Operators are stripped before the upstream call (the index treats them as
 literal text) and re-applied by the local ranking engine.
