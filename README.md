@@ -13,9 +13,13 @@ the [LangSearch](https://langsearch.com) Web Search API.
 - **Intent-aware ranking** — queries are classified (navigate / learn /
   fresh / general) and rescored client-side with BM25, phrase matching,
   a provider-order prior, and intent-conditioned boosts.
+- **Search operators** — `site:example.com` / `-site:example.com` map to
+  LangSearch `includeDomains`/`excludeDomains`; `"exact phrase"` boosts
+  verbatim containment; `-term` drops matching documents.
 - **Query rescue** — the Worker widens freshness windows that starve a
   query and fans out a simplified fallback query when the upstream index
-  returns too few candidates.
+  returns too few candidates; transient upstream failures get one bounded
+  jittered retry.
 - **Edge-cached** — identical searches share a canonical cache entry at
   the Cloudflare edge for 5 minutes.
 - **Installable PWA** — service worker precaches the app shell and the
@@ -73,12 +77,24 @@ crates/search-core/src/
 | `count` | `30` | Upstream candidates fetched, `1`–`50` |
 | `freshness` | inferred | `noLimit`, `oneDay`, `oneWeek`, `oneMonth`, `oneYear`; omit to let the worker infer from recency language |
 
-Response: `query`, `freshness` (effective), `freshness_requested`,
-`expanded` (a simplified fallback query contributed results),
-`candidates`, `results[]` (`id`, `name`, `url`, `displayUrl`, `snippet`,
-`summary`, `datePublished`), `usage`, `took_ms`. Errors return
-`{ "error": "…" }` with a matching HTTP status. `x-cache: HIT|MISS`
-marks edge-cache hits.
+Response: `query` (the operator-stripped form sent upstream),
+`freshness` (effective), `freshness_requested`, `expanded` (a simplified
+fallback query contributed results), `candidates`, `results[]` (`id`,
+`name`, `url`, `displayUrl`, `snippet`, `summary`, `datePublished`),
+`usage`, `took_ms`. Errors return `{ "error": "…" }` with a matching HTTP
+status. `x-cache: HIT|MISS` marks edge-cache hits.
+
+### Query syntax
+
+| Operator | Example | Effect |
+| --- | --- | --- |
+| `site:` | `workers site:cloudflare.com` | Only results from that domain (subdomains included) |
+| `-site:` | `rust -site:reddit.com` | Exclude a domain |
+| `"…"` | `"edge compute platform"` | Exact-phrase boost |
+| `-` | `rust -game` | Drop documents containing the term |
+
+Operators are stripped before the upstream call (the index treats them as
+literal text) and re-applied by the local ranking engine.
 
 ## Development
 
